@@ -1,5 +1,6 @@
 package com.example.zed
 
+import android.app.ProgressDialog
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
@@ -77,6 +78,7 @@ class InventoryItemDetails : AppCompatActivity() {
             return
         }
 
+        // Call setup functions once
         setupRecyclerViews()
         setupClickListeners()
 
@@ -90,12 +92,86 @@ class InventoryItemDetails : AppCompatActivity() {
         fetchProductDetails(inventoryBarcode)
     }
 
+    /**
+     * Sets up click listeners for the UI elements on THIS screen.
+     */
+    private fun setupClickListeners() {
+        // Listener for the primary action: adding a new count entry.
+        binding.addConstraint.setOnClickListener {
+            showAddEntryDialog()
+        }
+
+        // ✅ --- START: CORRECTED SCANNER LOGIC ---
+        // **Make sure your scanner ImageView in the XML has this ID: `barcodeScannerIcon`**
+        binding.barcodeScanner.setOnClickListener {
+            val scannerDialog = BarcodeScannerDialogFragment { scannedBarcode ->
+                // When a barcode is found, call the new validation function instead of navigating directly.
+                validateBarcodeAndNavigate(scannedBarcode)
+            }
+            // Show the dialog using the Activity's supportFragmentManager
+            scannerDialog.show(supportFragmentManager, "DetailsScannerDialog")
+        }
+
+
+    }
+
+    /**
+     * ✅ NEW FUNCTION: Validates the scanned barcode against the Google Sheet before navigating.
+     * This prevents the app from crashing if an unknown barcode is scanned.
+     */
+    private fun validateBarcodeAndNavigate(barcode: String) {
+        val progressDialog = showLoader("Verifying product...")
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val account = GoogleSignIn.getLastSignedInAccount(this@InventoryItemDetails)
+                    ?: throw IllegalStateException("User not signed in.")
+                val sheetsService = getSheetsService(account)
+                val driveService = getDriveService(account)
+                val spreadsheetId = findSheetIdByName(driveService, "nia-bridge data")
+                    ?: throw IllegalStateException("Spreadsheet 'nia-bridge data' not found.")
+
+                // Only fetch the barcode column (D) for an efficient check
+                val range = "Products!D:D"
+                val response = sheetsService.spreadsheets().values().get(spreadsheetId, range).execute()
+                val barcodesInSheet = response.getValues()?.flatMap { it.map { cell -> cell.toString().trim() } } ?: emptyList()
+
+                val productExists = barcodesInSheet.any { it == barcode.trim() }
+
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    if (productExists) {
+                        // SUCCESS: Product found. Restart the activity with the new barcode.
+                        Toast.makeText(this@InventoryItemDetails, "Product found. Loading details...", Toast.LENGTH_SHORT).show()
+                        val intent = Intent(this@InventoryItemDetails, InventoryItemDetails::class.java).apply {
+                            putExtra("inventoryBarcodes", barcode)
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                        }
+                        startActivity(intent)
+                    } else {
+                        // FAILURE: Product not found. Show an error and stay on the current screen.
+                        AlertDialog.Builder(this@InventoryItemDetails)
+                            .setTitle("Not Found")
+                            .setMessage("Product with barcode '$barcode' was not found in your products list.")
+                            .setPositiveButton("OK", null)
+                            .show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    Log.e("ValidateBarcode", "Error during validation", e)
+                    Toast.makeText(this@InventoryItemDetails, "Error verifying product: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+
     private fun setupRecyclerViews() {
-        // Pass a function to the adapter to handle item clicks
         countAdapter = CountEntryAdapter(countList) { position ->
             val entry = countList[position]
             val currentUserEmail = GoogleSignIn.getLastSignedInAccount(this)?.email
-            // Allow deletion if user is admin or the user who created the entry
             if (isAdmin || entry.user == currentUserEmail) {
                 showDeleteConfirmationDialog(entry)
             } else {
@@ -117,12 +193,6 @@ class InventoryItemDetails : AppCompatActivity() {
         }
     }
 
-    private fun setupClickListeners() {
-        binding.addConstraint.setOnClickListener {
-            showAddEntryDialog()
-        }
-    }
-
     private fun fetchProductDetails(barcode: String) {
         val progressDialog = showLoader("Loading Product Details...")
         lifecycleScope.launch(Dispatchers.IO) {
@@ -135,44 +205,33 @@ class InventoryItemDetails : AppCompatActivity() {
                 val spreadsheetId = findSheetIdByName(driveService, "nia-bridge data")
                     ?: throw IllegalStateException("Spreadsheet 'nia-bridge data' not found.")
 
-                // Launch all data fetching concurrently
                 coroutineScope {
                     launch { fetchLocationData(sheetsService, spreadsheetId) }
                     launch { fetchStockEntriesFromGoogleSheet(sheetsService, spreadsheetId, barcode) }
-                    // CRITICAL: We must fetch the units FIRST to know the master case size.
                     launch { fetchUnitData(sheetsService, spreadsheetId, barcode) }
                 }
 
-                // Now that all lists are populated, fetch the main product info
                 val range = "Products!A:L"
                 val response = sheetsService.spreadsheets().values().get(spreadsheetId, range).execute()
                 val values = response.getValues()?.drop(1) ?: emptyList()
+
+                // This check is now a fallback, as validation should happen before we even get here.
                 val productRow = values.firstOrNull { it.getOrNull(3)?.toString()?.trim() == barcode }
-                    ?: throw IllegalStateException("Product with barcode '$barcode' not found in the sheet.")
+                if (productRow == null) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@InventoryItemDetails, "Product details could not be loaded.", Toast.LENGTH_LONG).show()
+                        finish() // Close gracefully
+                    }
+                    return@launch
+                }
 
                 val productName = productRow.getOrNull(1)?.toString() ?: "N/A"
                 val imageUrl = productRow.getOrNull(2)?.toString()
-                // Get the stock in cases from the sheet (e.g., "100")
                 val stockInCases = productRow.getOrNull(6)?.toString()?.toDoubleOrNull() ?: 0.0
-                val unitCost = productRow.getOrNull(8)?.toString() ?: "0.00"
                 val rawLocationString = productRow.getOrNull(9)?.toString() ?: ""
 
-
-                // --- START: ✅ NEW LOGIC FOR STOCK CALCULATION ---
-
-                // Find the highest unit (master case size) from the already-fetched unitList.
                 val highestUnit = unitList.mapNotNull { it.caseUnits.toIntOrNull() }.maxOrNull() ?: 1
-
-                // Multiply the stock in cases by the master case size to get total single units.
-                // e.g., 100.0 (cases) * 12 (units/case) = 1200.0 (single units)
                 val totalStockInUnits = stockInCases * highestUnit
-
-                Log.d("StockCalc", "Stock in Cases from Sheet: $stockInCases")
-                Log.d("StockCalc", "Highest Unit (Master Case Size): $highestUnit")
-                Log.d("StockCalc", "Calculated Total Stock in Units: $totalStockInUnits")
-
-                // --- END: NEW LOGIC FOR STOCK CALCULATION ---
-
 
                 val assignedLocationIds = Regex("LOC-[A-Z0-9]+", RegexOption.IGNORE_CASE)
                     .findAll(rawLocationString)
@@ -182,15 +241,10 @@ class InventoryItemDetails : AppCompatActivity() {
                 productLocations.clear()
                 productLocations.addAll(locationList.filter { it.id in assignedLocationIds })
 
-                // Switch to Main thread to update the UI
                 withContext(Dispatchers.Main) {
                     binding.itemName.text = productName
                     binding.itemBarcode.text = barcode
-
-                    // Set the itemStock text to the CORRECT total number of single units.
                     binding.itemStock.text = "Units: " + String.format("%.0f", totalStockInUnits)
-
-                   // binding.productDetailsPrice.text = "ZMW " + unitCost
 
                     val directImageUrl = convertDriveUrlToDirect(imageUrl)
                     binding.itemImage.load(directImageUrl) {
@@ -202,12 +256,10 @@ class InventoryItemDetails : AppCompatActivity() {
                     unitAdapter.notifyDataSetChanged()
 
                     if (unitList.isNotEmpty()) {
-                        // Find the unit with the highest value to select it by default
                         selectedUnit = unitList.maxByOrNull { it.caseUnits.toIntOrNull() ?: 0 }
                         selectedUnit?.let { updateUnitDetails(it) }
                     }
 
-                    // Now when we call this, it has all the correct numbers to work with.
                     updateCountAndDiff()
                     progressDialog.dismiss()
                 }
@@ -223,6 +275,7 @@ class InventoryItemDetails : AppCompatActivity() {
         }
     }
 
+    //<editor-fold desc="The rest of your functions remain the same.">
     private suspend fun fetchUnitData(sheetsService: Sheets, spreadsheetId: String, productBarcode: String) {
         try {
             val range = "unit_measure!A:H"
@@ -272,10 +325,8 @@ class InventoryItemDetails : AppCompatActivity() {
         val spinnerRack = dialogView.findViewById<Spinner>(R.id.rackDialog)
         val spinnerShelf = dialogView.findViewById<Spinner>(R.id.shelfDialog)
         val inputDisplay = dialogView.findViewById<EditText>(R.id.editTextText2)
-       // val dialogTitle = dialogView.findViewById<TextView>(R.id.dialog_title)
         val unitQtySpinner = dialogView.findViewById<Spinner>(R.id.unitQty)
 
-        // Populate the Unit of Measure Spinner
         val unitDescriptions = unitList.map { it.quantityDescription }
         val unitSpinnerAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, unitDescriptions)
         unitQtySpinner.adapter = unitSpinnerAdapter
@@ -285,10 +336,8 @@ class InventoryItemDetails : AppCompatActivity() {
             unitQtySpinner.setSelection(previouslySelectedIndex)
         }
 
-       // dialogTitle?.text = "Add Count"
         setupNumpad(dialogView, inputDisplay)
 
-        // Location filtering logic
         spinnerRack.isEnabled = false
         spinnerShelf.isEnabled = false
         val countedLocationIds = countList.map { it.locationId.uppercase() }.toSet()
@@ -368,7 +417,6 @@ class InventoryItemDetails : AppCompatActivity() {
         dialog.show()
     }
 
-    // ✅ --- START: REVISED saveCountEntry ---
     private fun saveCountEntry(barcode: String, locationId: String, quantityEntered: Int, unit: UnitOfMeasure, dialog: AlertDialog) {
         val progress = showLoader("Saving entry...")
         lifecycleScope.launch(Dispatchers.IO) {
@@ -380,10 +428,8 @@ class InventoryItemDetails : AppCompatActivity() {
 
                 val account = GoogleSignIn.getLastSignedInAccount(this@InventoryItemDetails) ?: throw Exception("Not signed in")
                 val sheetsService = getSheetsService(account)
-                val driveService = getDriveService(account)
-                val spreadsheetId = findSheetIdByName(driveService, "nia-bridge data") ?: throw Exception("Sheet not found")
+                val spreadsheetId = findSheetIdByName(getDriveService(account), "nia-bridge data") ?: throw Exception("Sheet not found")
                 val sheetName = "countData"
-
                 ensureSheetExists(sheetsService, spreadsheetId, sheetName)
 
                 val values = listOf(
@@ -402,13 +448,11 @@ class InventoryItemDetails : AppCompatActivity() {
                     .setValueInputOption("USER_ENTERED")
                     .execute()
 
-                // RE-FETCH the count list from the sheet after saving
                 fetchStockEntriesFromGoogleSheet(sheetsService, spreadsheetId, barcode)
 
-                // NOW, switch to the main thread to update the UI
                 withContext(Dispatchers.Main) {
                     progress.dismiss()
-                    countAdapter.notifyDataSetChanged() // Tell the adapter to redraw itself
+                    countAdapter.notifyDataSetChanged()
                     updateCountAndDiff()
                     Toast.makeText(this@InventoryItemDetails, "Entry saved!", Toast.LENGTH_SHORT).show()
                     dialog.dismiss()
@@ -422,58 +466,29 @@ class InventoryItemDetails : AppCompatActivity() {
             }
         }
     }
-    // ✅ --- END: REVISED saveCountEntry ---
-
-    //<editor-fold desc="Boilerplate and Helper Functions">
 
     private fun updateCountAndDiff() {
-        // 1. Get the total raw number of single units that have been counted.
         val totalCounted = countList.sumOf { it.quantity }
-
-        // 2. Find the "master case size" (the highest value from the caseUnits list).
         val masterCaseSize = unitList.mapNotNull { it.caseUnits.toIntOrNull() }.maxOrNull()
-
         val countedDisplayText: String
-
-        // 3. Calculate the display value for the "Counted" field in terms of cases.
         if (masterCaseSize != null && masterCaseSize > 0) {
-            // Divide the total single units by the number of units in a master case.
             val displayValueInCases = totalCounted.toDouble() / masterCaseSize.toDouble()
-            // Format the result to show decimal places (e.g., "1.50").
             countedDisplayText = String.format("%.2f", displayValueInCases)
         } else {
-            // Fallback: If no units are defined, just show the raw total.
             countedDisplayText = totalCounted.toString()
         }
-
-        // Set the correctly formatted "Counted" text.
         binding.itemCounted.text = "Counted: " + totalCounted
-
-        // --- START: ✅ FINAL, CORRECTED VARIANCE (DIFF) LOGIC ---
-
-        // 4. Get the total stock in single units from the TextView.
-        //    The .replace() call is a safeguard against any non-numeric text.
         val stock = binding.itemStock.text.toString().replace(Regex("[^0-9.]"), "").toDoubleOrNull() ?: 0.0
-
-        // 5. Calculate the difference: Stock - Counted.
         val diff = stock - totalCounted
-
-        // 6. Set the text for the difference.
         binding.itemDiff.text = "Variance: " + String.format("%.0f", diff)
-
-        // 7. Set the text color based on your rules.
         binding.itemDiff.setTextColor(
             when {
-                diff < 0 -> Color.RED                      // Count is higher than stock (Negative diff)
-                diff > 0 -> Color.parseColor("#34A853") // Count is lower than stock (Positive diff)
-                else -> Color.GRAY                       // Count matches stock (Zero diff)
+                diff < 0 -> Color.RED
+                diff > 0 -> Color.parseColor("#34A853")
+                else -> Color.GRAY
             }
         )
-        // --- END: FINAL, CORRECTED VARIANCE (DIFF) LOGIC ---
     }
-
-
-
 
     private fun showDeleteConfirmationDialog(entry: CountEntry) {
         AlertDialog.Builder(this)
@@ -484,15 +499,13 @@ class InventoryItemDetails : AppCompatActivity() {
             .show()
     }
 
-    // ✅ --- START: REVISED deleteCountEntry ---
     private fun deleteCountEntry(entry: CountEntry) {
         val progressDialog = showLoader("Deleting entry...")
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val account = GoogleSignIn.getLastSignedInAccount(this@InventoryItemDetails) ?: throw Exception("User not signed in")
                 val sheetsService = getSheetsService(account)
-                val driveService = getDriveService(account)
-                val spreadsheetId = findSheetIdByName(driveService, "nia-bridge data") ?: throw Exception("Spreadsheet not found")
+                val spreadsheetId = findSheetIdByName(getDriveService(account), "nia-bridge data") ?: throw Exception("Spreadsheet not found")
                 val sheetName = "countData"
 
                 val response = sheetsService.spreadsheets().values().get(spreadsheetId, "$sheetName!A:F").execute()
@@ -523,20 +536,16 @@ class InventoryItemDetails : AppCompatActivity() {
                     val batchUpdateRequest = BatchUpdateSpreadsheetRequest().setRequests(listOf(Request().setDeleteDimension(deleteRequest)))
                     sheetsService.spreadsheets().batchUpdate(spreadsheetId, batchUpdateRequest).execute()
 
-                    // RE-FETCH the data after successful deletion
-                    val inventoryBarcode = binding.itemBarcode.text.toString()
-                    fetchStockEntriesFromGoogleSheet(sheetsService, spreadsheetId, inventoryBarcode)
+                    fetchStockEntriesFromGoogleSheet(sheetsService, spreadsheetId, binding.itemBarcode.text.toString())
 
-                    // NOW switch to the main thread to update UI
                     withContext(Dispatchers.Main) {
                         Toast.makeText(this@InventoryItemDetails, "Entry deleted.", Toast.LENGTH_SHORT).show()
-                        countAdapter.notifyDataSetChanged() // Tell the adapter to redraw
+                        countAdapter.notifyDataSetChanged()
                         updateCountAndDiff()
                     }
                 } else {
                     throw Exception("Could not find the specific entry to delete.")
                 }
-
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@InventoryItemDetails, "Error deleting entry: ${e.message}", Toast.LENGTH_LONG).show()
@@ -549,7 +558,6 @@ class InventoryItemDetails : AppCompatActivity() {
             }
         }
     }
-    // ✅ --- END: REVISED deleteCountEntry ---
 
     private fun setupNumpad(dialogView: View, inputDisplay: EditText) {
         inputDisplay.showSoftInputOnFocus = false
