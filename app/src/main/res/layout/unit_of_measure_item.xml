@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="10dp"
+    android:layout_marginBottom="10dp"
+    tools:context=".detailsStock">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <EditText
+            android:id="@+id/unitRack"
+            android:layout_width="0dp"
+            android:layout_height="24dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/spinner_border"
+            android:ems="10"
+            android:hint="Selling Price"
+            android:inputType="text"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:textColor="#0071c1"
+            android:textColorHighlight="#0071c1"
+            android:textColorHint="#0071c1"
+            android:textSize="9sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/unitAisle" />
+
+        <EditText
+            android:id="@+id/unitAisle"
+            android:layout_width="0dp"
+            android:layout_height="24dp"
+            android:background="@drawable/spinner_border"
+            android:ems="10"
+            android:hint="Barcode"
+            android:inputType="text"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:textColor="#0071c1"
+            android:textColorHighlight="#0071c1"
+            android:textColorHint="#0071c1"
+            android:textSize="9sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <EditText
+            android:id="@+id/unitShelf"
+            android:layout_width="0dp"
+            android:layout_height="24dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/spinner_border"
+            android:ems="10"
+            android:hint="How many units in a case"
+            android:inputType="text"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:textColor="#0071c1"
+            android:textColorHighlight="#0071c1"
+            android:textColorHint="#0071c1"
+            android:textSize="9sp"
+            app:layout_constraintEnd_toEndOf="@+id/unitRack"
+            app:layout_constraintHorizontal_bias="0.0"
+            app:layout_constraintStart_toStartOf="@+id/unitRack"
+            app:layout_constraintTop_toBottomOf="@+id/unitRack" />
+
+        <Button
+            android:id="@+id/btnRemoveUnit"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginTop="8dp"
+            android:text="Remove"
+
+            android:textAllCaps="false"
+
+            android:textColor="@android:color/white"
+            android:textSize="9sp"
+
+            app:backgroundTint="#b62e2e"
+            app:cornerRadius="2dp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/unit_of_measure_cost" />
+
+
+        <EditText
+            android:id="@+id/unitQty"
+            android:layout_width="0dp"
+            android:layout_height="24dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/spinner_border"
+            android:ems="10"
+            android:hint="Quantity Description"
+            android:inputType="text"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:textColor="#0071c1"
+            android:textColorHighlight="#0071c1"
+            android:textColorHint="#0071c1"
+            android:textSize="9sp"
+            app:layout_constraintEnd_toEndOf="@+id/unitShelf"
+            app:layout_constraintStart_toStartOf="@+id/unitShelf"
+            app:layout_constraintTop_toBottomOf="@+id/unitShelf" />
+
+        <EditText
+            android:id="@+id/unit_of_measure_cost"
+            android:layout_width="0dp"
+            android:layout_height="24dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/spinner_border"
+            android:ems="10"
+            android:hint="(optional) unit of measure cost"
+            android:inputType="text"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:textColor="#0071c1"
+            android:textColorHighlight="#0071c1"
+            android:textColorHint="#0071c1"
+            android:textSize="9sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/unitQty" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</FrameLayout>

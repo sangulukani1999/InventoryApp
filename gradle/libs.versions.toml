@@ -1,0 +1,104 @@
+
+[versions]
+# Core Android & UI
+agp = "8.10.0"
+kotlin = "2.0.21"
+coreKtx = "1.16.0"
+appcompat = "1.7.1"
+material = "1.12.0"
+activity = "1.10.1"
+constraintlayout = "2.2.1"
+lifecycleLivedataKtx = "2.9.1"
+lifecycleViewmodelKtx = "2.9.1"
+navigationFragmentKtx = "2.9.0"
+navigationUiKtx = "2.9.0"
+
+# Networking & APIs
+retrofit = "2.9.0"
+volley = "1.2.1"
+
+# Google & Firebase
+firebaseBom = "33.4.0"
+playServicesAuth = "21.3.0"
+mlkitBarcode = "17.2.0"
+googleServicesPlugin = "4.4.2"
+
+# Google API Libs
+googleApiSheets = "v4-rev20240527-2.0.0"
+googleApiDrive = "v3-rev20240527-2.0.0"
+googleApiClientAndroid = "2.4.0"
+googleHttpClientGson = "1.44.2"
+# ✅ ADD THIS VERSION FOR THE MISSING LIBRARY
+googleApiClientGoogleapisExtensions = "2.4.0"
+
+# Camera & Image
+cameraX = "1.3.4"
+coil = "2.6.0"
+
+# Other
+coroutines = "1.8.1"
+mpAndroidChart = "v3.1.0"
+
+# Testing
+junit = "4.13.2"
+junitVersion = "1.2.1"
+espressoCore = "3.6.1"
+legacySupportV4 = "1.0.0"
+coreAnimation = "1.0.0"
+
+[libraries]
+# AndroidX & UI
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+androidx-activity = { group = "androidx.activity", name = "activity", version.ref = "activity" }
+androidx-constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
+androidx-lifecycle-livedata-ktx = { group = "androidx.lifecycle", name = "lifecycle-livedata-ktx", version.ref = "lifecycleLivedataKtx" }
+androidx-lifecycle-viewmodel-ktx = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycleViewmodelKtx" }
+androidx-navigation-fragment-ktx = { group = "androidx.navigation", name = "navigation-fragment-ktx", version.ref = "navigationFragmentKtx" }
+androidx-navigation-ui-ktx = { group = "androidx.navigation", name = "navigation-ui-ktx", version.ref = "navigationUiKtx" }
+
+# Networking & APIs
+retrofit-core = { group = "com.squareup.retrofit2", name = "retrofit", version.ref = "retrofit" }
+retrofit-converter-gson = { group = "com.squareup.retrofit2", name = "converter-gson", version.ref = "retrofit" }
+volley = { group = "com.android.volley", name = "volley", version.ref = "volley" }
+
+# Google & Firebase
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-auth-ktx = { group = "com.google.firebase", name = "firebase-auth-ktx" }
+google-play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
+mlkit-barcode-scanning = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkitBarcode" }
+
+# Google API Libs
+google-api-services-sheets = { group = "com.google.apis", name = "google-api-services-sheets", version = "v4-rev20250616-2.0.0" }
+google-api-services-drive = { group = "com.google.apis", name = "google-api-services-drive", version = "v3-rev20251019-2.0.0" }
+google-api-client-android = { group = "com.google.api-client", name = "google-api-client-android", version.ref = "googleApiClientAndroid" }
+google-http-client-gson = { group = "com.google.http-client", name = "google-http-client-gson", version.ref = "googleHttpClientGson" }
+# ✅ ADD THIS ALIAS FOR THE MISSING LIBRARY
+google-api-client-googleapis-extensions = { group = "com.google.api-client", name = "google-api-client-googleapis-extensions", version.ref = "googleApiClientGoogleapisExtensions" }
+
+
+# Camera & Image
+androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "cameraX" }
+androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "cameraX" }
+androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "cameraX" }
+androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "cameraX" }
+coil = { group = "io.coil-kt", name = "coil", version.ref = "coil" }
+
+# Other
+kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+mpandroidchart = { group = "com.github.PhilJay", name = "MPAndroidChart", version.ref = "mpAndroidChart" }
+
+# Testing
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
+androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
+androidx-legacy-support-v4 = { group = "androidx.legacy", name = "legacy-support-v4", version.ref = "legacySupportV4" }
+androidx-core-animation = { group = "androidx.core", name = "core-animation", version.ref = "coreAnimation" }
+
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+google-services = { id = "com.google.gms.google-services", version.ref = "googleServicesPlugin" }
+

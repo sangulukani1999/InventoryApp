@@ -1,0 +1,28 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Base application theme (force light mode) -->
+    <style name="Base.Theme.Zed" parent="Theme.Material3.Light.NoActionBar">
+        <!-- Prevent system dark mode -->
+        <item name="android:forceDarkAllowed">false</item>
+
+        <!-- Set system bar colors -->
+        <item name="android:statusBarColor">@color/nav_bar_color</item>
+        <item name="android:navigationBarColor">@color/nav_bar_color</item>
+
+        <!-- Control icon colors -->
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+
+    <!-- Alias theme -->
+    <style name="Theme.Zed" parent="Base.Theme.Zed" />
+
+    <style name="Theme.Zed.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+    </style>
+
+    <style name="Theme.Zed.AppBarOverlay" parent="ThemeOverlay.AppCompat.Dark.ActionBar" />
+    <style name="Theme.Zed.PopupOverlay" parent="ThemeOverlay.AppCompat.Light" />
+
+</resources>

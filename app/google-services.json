@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "126497055268",
+    "project_id": "nia-bridge-authentication",
+    "storage_bucket": "nia-bridge-authentication.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:126497055268:android:c86c2569d71b483f85aeb1",
+        "android_client_info": {
+          "package_name": "com.example.zed"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "126497055268-5nfd5du7sv5ic8srvvq0o77cu476e257.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.zed",
+            "certificate_hash": "aa2b850b8c1907823a7c36e8e213b324cd6162b2"
+          }
+        },
+        {
+          "client_id": "126497055268-44ja31uv9nd7d1k99jlelkscj3n783oo.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDydovUpI8jOr5l6umbot0SnV9qth8FhlI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "126497055268-44ja31uv9nd7d1k99jlelkscj3n783oo.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

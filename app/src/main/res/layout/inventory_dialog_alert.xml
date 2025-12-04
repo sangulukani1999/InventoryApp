@@ -1,0 +1,453 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="#3486d3"
+    android:padding="12dp">
+
+    <!-- SEARCH (kept id) -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/searchView"
+        android:layout_width="0dp"
+        android:layout_height="46dp"
+        app:cardElevation="2dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <EditText
+            android:id="@+id/editTextText2"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/alert_dialog"
+            android:gravity="end|center_vertical"
+            android:inputType="text"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:textSize="14sp" />
+    </androidx.cardview.widget.CardView>
+
+    <!-- MAIN HORIZONTAL AREA: left = spinners + keypad, right = scan + submit -->
+    <LinearLayout
+        android:id="@+id/mainRow"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="horizontal"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/searchView">
+
+        <!-- LEFT COLUMN: spinners (top) + keypad (bottom) -->
+        <LinearLayout
+            android:id="@+id/leftColumn"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="3"
+            android:orientation="vertical">
+
+            <!-- Row: Aisle & Shelf -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:orientation="horizontal"
+                android:weightSum="2">
+
+
+                <Spinner
+                    android:id="@+id/aisleDialog"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="1"
+                    android:background="#f1f0f0" />
+
+                <Spinner
+                    android:id="@+id/shelfDialog"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:layout_weight="1"
+                    android:background="#f1f0f0" />
+            </LinearLayout>
+
+            <!-- Row: Rack + small barcode-like view -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:orientation="horizontal"
+                android:weightSum="4">
+
+                <Spinner
+                    android:id="@+id/rackDialog"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="6dp"
+                    android:layout_weight="3"
+                    android:background="#f1f0f0" />
+
+                <!-- small barcode placeholder (keeps visual from screenshot) -->
+                <androidx.cardview.widget.CardView
+                    android:id="@+id/barcodeView"
+                    android:layout_width="0dp"
+                    android:layout_height="36dp"
+                    android:layout_weight="1"
+                    android:foreground="?attr/selectableItemBackground"
+                    app:cardElevation="2dp">
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="#005596" />
+
+                    <androidx.constraintlayout.widget.ConstraintLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent">
+
+                        <ImageView
+                            android:id="@+id/imageView15"
+                            android:layout_width="40dp"
+                            android:layout_height="20dp"
+                            app:layout_constraintBottom_toBottomOf="parent"
+                            app:layout_constraintEnd_toEndOf="parent"
+                            app:layout_constraintStart_toStartOf="parent"
+                            app:layout_constraintTop_toTopOf="parent"
+                            app:srcCompat="@drawable/barcode" />
+                    </androidx.constraintlayout.widget.ConstraintLayout>
+
+                </androidx.cardview.widget.CardView>
+            </LinearLayout>
+
+            <!-- KEYPAD (4 rows x 3 columns). We use weighted LinearLayouts for stable, even sizing -->
+            <LinearLayout
+                android:id="@+id/keypadContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <!-- Row 1: 1 2 3 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="64dp"
+                    android:layout_marginBottom="8dp"
+                    android:orientation="horizontal"
+                    android:weightSum="3">
+
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/oneView"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginEnd="8dp"
+                        android:layout_weight="1"
+                        app:cardCornerRadius="10dp"
+                        app:cardElevation="2dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#f1f0f0"
+                            android:gravity="center"
+                            android:text="1"
+                            android:textColor="#0071c1"
+                            android:textSize="10sp" />
+                    </androidx.cardview.widget.CardView>
+
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/twoView"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginEnd="8dp"
+                        android:layout_weight="1"
+                        app:cardCornerRadius="10dp"
+                        app:cardElevation="2dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#f1f0f0"
+                            android:gravity="center"
+                            android:text="2"
+                            android:textColor="#0071c1"
+                            android:textSize="10sp" />
+                    </androidx.cardview.widget.CardView>
+
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/threeView"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        app:cardCornerRadius="10dp"
+                        app:cardElevation="2dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#f1f0f0"
+                            android:gravity="center"
+                            android:text="3"
+                            android:textColor="#0071c1"
+                            android:textSize="10sp" />
+                    </androidx.cardview.widget.CardView>
+                </LinearLayout>
+
+                <!-- Row 2: 4 5 6 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="64dp"
+                    android:layout_marginBottom="8dp"
+                    android:orientation="horizontal"
+                    android:weightSum="3">
+
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/fourView"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginEnd="8dp"
+                        android:layout_weight="1"
+                        app:cardCornerRadius="10dp"
+                        app:cardElevation="2dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#f1f0f0"
+                            android:gravity="center"
+                            android:text="4"
+                            android:textColor="#0071c1"
+                            android:textSize="10sp" />
+                    </androidx.cardview.widget.CardView>
+
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/fiveView"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginEnd="8dp"
+                        android:layout_weight="1"
+                        app:cardCornerRadius="10dp"
+                        app:cardElevation="2dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#f1f0f0"
+                            android:gravity="center"
+                            android:text="5"
+                            android:textColor="#0071c1"
+                            android:textSize="10sp" />
+                    </androidx.cardview.widget.CardView>
+
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/sixView"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        app:cardCornerRadius="10dp"
+                        app:cardElevation="2dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#f1f0f0"
+                            android:gravity="center"
+                            android:text="6"
+                            android:textColor="#0071c1"
+                            android:textSize="10sp" />
+                    </androidx.cardview.widget.CardView>
+                </LinearLayout>
+
+                <!-- Row 3: 7 8 9 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="64dp"
+                    android:layout_marginBottom="8dp"
+                    android:orientation="horizontal"
+                    android:weightSum="3">
+
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/sevenView"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginEnd="8dp"
+                        android:layout_weight="1"
+                        app:cardCornerRadius="10dp"
+                        app:cardElevation="2dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#f1f0f0"
+                            android:gravity="center"
+                            android:text="7"
+                            android:textColor="#0071c1"
+                            android:textSize="10sp" />
+                    </androidx.cardview.widget.CardView>
+
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/eightView"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginEnd="8dp"
+                        android:layout_weight="1"
+                        app:cardCornerRadius="10dp"
+                        app:cardElevation="2dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#f1f0f0"
+                            android:gravity="center"
+                            android:text="8"
+                            android:textColor="#0071c1"
+                            android:textSize="10sp" />
+                    </androidx.cardview.widget.CardView>
+
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/nineView"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        app:cardCornerRadius="10dp"
+                        app:cardElevation="2dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#f1f0f0"
+                            android:gravity="center"
+                            android:text="9"
+                            android:textColor="#0071c1"
+                            android:textSize="10sp" />
+                    </androidx.cardview.widget.CardView>
+                </LinearLayout>
+
+                <!-- Row 4: 0 . B/C (backArrow) -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="64dp"
+                    android:orientation="horizontal"
+                    android:weightSum="3">
+
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/zeroView"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginEnd="8dp"
+                        android:layout_weight="1"
+                        app:cardCornerRadius="10dp"
+                        app:cardElevation="2dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#f1f0f0"
+                            android:gravity="center"
+                            android:text="0"
+                            android:textColor="#0071c1"
+                            android:textSize="10sp" />
+                    </androidx.cardview.widget.CardView>
+
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/dotView"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_marginEnd="8dp"
+                        android:layout_weight="1"
+                        app:cardCornerRadius="10dp"
+                        app:cardElevation="2dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#f1f0f0"
+                            android:gravity="center"
+                            android:text="."
+                            android:textColor="#0071c1"
+                            android:textSize="10sp" />
+                    </androidx.cardview.widget.CardView>
+
+                    <!-- Back / B/C (keeps original id 'backArrow') -->
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/backArrow"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        app:cardCornerRadius="10dp"
+                        app:cardElevation="2dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#f1f0f0"
+                            android:gravity="center"
+                            android:text="B/C"
+                            android:textColor="#0071c1"
+                            android:textSize="10sp" />
+                    </androidx.cardview.widget.CardView>
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- RIGHT COLUMN: Scan (top) + Submit (large, kept id OkView) -->
+        <LinearLayout
+            android:id="@+id/rightColumn"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <!-- Scan button (kept id scanButton) -->
+            <Spinner
+                android:id="@+id/unitQty"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginBottom="12dp"
+                android:background="#005595"
+                app:cardElevation="2dp">
+
+            </Spinner>
+
+            <!-- Vertical Submit area (kept id OkView to match your original) -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/OkView"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                app:cardElevation="2dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="#005596"
+                    android:gravity="center"
+                    android:text="SUBMIT"
+                    android:textColor="@android:color/white"
+                    android:textSize="10sp" />
+            </androidx.cardview.widget.CardView>
+
+            <!-- Keep a cancel control if your logic references it (kept id cancelView).
+                 It's placed below submit for accessibility but invisible by default - you can reposition later -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/cancelView"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="10dp"
+                android:visibility="gone"
+                app:cardElevation="2dp"> <!-- hidden by default to avoid duplicate UI -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/button_dialog_alert"
+                    android:gravity="center"
+                    android:text="C"
+                    android:textSize="16sp" />
+            </androidx.cardview.widget.CardView>
+        </LinearLayout>
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Main app theme (Light only, no dark mode) -->
+    <style name="AppTheme" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <!-- Prevent automatic dark mode -->
+        <item name="android:forceDarkAllowed">false</item>
+
+        <!-- Status bar and nav bar colors -->
+        <item name="android:statusBarColor">@color/nav_bar_color</item>
+        <item name="android:navigationBarColor">@color/nav_bar_color</item>
+
+        <!-- Control icon visibility -->
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+
+    <style name="CustomSearchView" parent="Widget.AppCompat.SearchView">
+        <item name="android:textSize">11sp</item>
+    </style>
+
+
+</resources>
