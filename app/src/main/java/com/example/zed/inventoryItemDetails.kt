@@ -41,6 +41,8 @@ import org.json.JSONException
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
+import com.example.zed.BarcodeScannerDialogFragment
+import com.google.mlkit.vision.barcode.common.Barcode
 
 class InventoryItemDetails : AppCompatActivity() {
 
@@ -111,8 +113,7 @@ class InventoryItemDetails : AppCompatActivity() {
             // Show the dialog using the Activity's supportFragmentManager
             scannerDialog.show(supportFragmentManager, "DetailsScannerDialog")
         }
-
-
+        // ✅ --- END: CORRECTED SCANNER LOGIC ---
     }
 
     /**
@@ -388,7 +389,7 @@ class InventoryItemDetails : AppCompatActivity() {
             override fun onNothingSelected(parent: AdapterView<*>) {}
         }
 
-        val dialog = AlertDialog.Builder(this).setView(dialogView).create()
+        val dialog = AlertDialog.Builder(this).setTitle("Add Count").setView(dialogView).create()
         dialogView.findViewById<CardView>(R.id.OkView)?.setOnClickListener {
             val quantityEntered = inputDisplay.text.toString().toIntOrNull()
             if (quantityEntered == null || quantityEntered <= 0) {
