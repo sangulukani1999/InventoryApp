@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+
+    <!-- This sets the background color of the spinner -->
+    <solid android:color="#FFFFFF" />
+
+    <!-- This creates the red border -->
+    <stroke
+        android:width="2dp"
+        android:color="#D32F2F" /> <!-- A standard Material Design error red -->
+
+    <!-- This gives it slightly rounded corners, matching your other spinners -->
+    <corners android:radius="4dp" />
+
+</shape>

@@ -1,0 +1,298 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".detailsStock">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <com.github.mikephil.charting.charts.BarChart
+            android:id="@+id/barChart"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_margin="16dp"
+            app:layout_constraintBottom_toTopOf="@+id/imageView7"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/cardView3" />
+
+        <ImageView
+            android:id="@+id/imageView7"
+            android:layout_width="35dp"
+            android:layout_height="35dp"
+            android:layout_marginBottom="45dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:srcCompat="@drawable/logo" />
+
+        <TextView
+            android:id="@+id/textView28"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="52dp"
+            android:layout_marginBottom="28dp"
+            android:text="-BRIDGE"
+            android:textColor="#2ac5ff"
+            android:textSize="9.5sp"
+            android:textStyle="bold"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.514"
+            app:layout_constraintStart_toStartOf="parent" />
+
+        <TextView
+            android:id="@+id/textView29"
+            android:layout_width="wrap_content"
+            android:layout_height="17dp"
+            android:layout_marginStart="2dp"
+            android:text="ZAMBIA LTD"
+            android:textColor="#0071c1"
+            android:textSize="9.5sp"
+            android:textStyle="bold"
+            app:layout_constraintStart_toEndOf="@+id/textView28"
+            app:layout_constraintTop_toTopOf="@+id/textView28" />
+        <TextView
+            android:id="@+id/textView4"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="2dp"
+            android:text="NIA"
+            android:textAlignment="center"
+            android:textColor="#0071c1"
+            android:textSize="9.5sp"
+            android:textStyle="bold"
+            app:layout_constraintBottom_toBottomOf="@+id/textView28"
+            app:layout_constraintEnd_toStartOf="@+id/textView28"
+            app:layout_constraintTop_toTopOf="@+id/textView28" />
+
+        <ImageView
+            android:id="@+id/stockImage"
+            android:layout_width="100dp"
+            android:layout_height="100dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="24dp"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            tools:src="@tools:sample/avatars" />
+
+        <EditText
+            android:id="@+id/barcode"
+            android:layout_width="0dp"
+            android:layout_height="24dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/spinner_border"
+            android:ems="10"
+            android:inputType="text"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:text="Barcode"
+            android:textColor="#0071c1"
+            android:textSize="11sp"
+            app:layout_constraintEnd_toStartOf="@+id/imageView20"
+            app:layout_constraintStart_toEndOf="@+id/stockImage"
+            app:layout_constraintTop_toTopOf="@+id/stockImage" />
+
+        <EditText
+            android:id="@+id/productName"
+            android:layout_width="0dp"
+            android:layout_height="24dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/spinner_border"
+            android:ems="10"
+            android:inputType="text"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:textColor="#0071c1"
+            android:textSize="11sp"
+            app:layout_constraintEnd_toEndOf="@+id/imageView20"
+            app:layout_constraintStart_toEndOf="@+id/textView24"
+            app:layout_constraintTop_toBottomOf="@+id/imageView20" />
+
+        <EditText
+            android:id="@+id/unitSelling"
+            android:layout_width="0dp"
+            android:layout_height="24dp"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/spinner_border"
+            android:ems="10"
+            android:inputType="text"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:textColor="#0071c1"
+            android:textSize="11sp"
+            app:layout_constraintEnd_toEndOf="@+id/productName"
+            app:layout_constraintStart_toEndOf="@+id/textView26"
+            app:layout_constraintTop_toBottomOf="@+id/productName" />
+
+        <EditText
+            android:id="@+id/unitCost"
+            android:layout_width="0dp"
+            android:layout_height="24dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/spinner_border"
+            android:ems="10"
+            android:inputType="text"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:textColor="#0071c1"
+            android:textSize="11sp"
+            app:layout_constraintEnd_toEndOf="@+id/unitSelling"
+            app:layout_constraintStart_toStartOf="@+id/unitSelling"
+            app:layout_constraintTop_toBottomOf="@+id/unitSelling" />
+
+        <EditText
+            android:id="@+id/caseQty"
+            android:layout_width="0dp"
+            android:layout_height="24dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/spinner_border"
+            android:ems="10"
+            android:inputType="text"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:textColor="#0071c1"
+            android:textSize="11sp"
+            app:layout_constraintEnd_toEndOf="@+id/unitCost"
+            app:layout_constraintStart_toStartOf="@+id/unitCost"
+            app:layout_constraintTop_toBottomOf="@+id/unitCost" />
+
+        <EditText
+            android:id="@+id/minOrder"
+            android:layout_width="0dp"
+            android:layout_height="24dp"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/spinner_border"
+            android:ems="10"
+            android:inputType="text"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:textColor="#0071c1"
+            android:textSize="11sp"
+            app:layout_constraintEnd_toEndOf="@+id/caseQty"
+            app:layout_constraintStart_toStartOf="@+id/caseQty"
+            app:layout_constraintTop_toBottomOf="@+id/caseQty" />
+
+        <ImageView
+            android:id="@+id/imageView20"
+            android:layout_width="59dp"
+            android:layout_height="14dp"
+            android:layout_marginEnd="16dp"
+            android:src="@drawable/barcode_icon"
+            app:layout_constraintBottom_toBottomOf="@+id/barcode"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@+id/barcode" />
+
+        <TextView
+            android:id="@+id/textView24"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Product"
+            android:textColor="#0071c1"
+            android:textSize="11sp"
+            android:textStyle="normal"
+            app:layout_constraintBottom_toBottomOf="@+id/productName"
+            app:layout_constraintStart_toStartOf="@+id/barcode"
+            app:layout_constraintTop_toTopOf="@+id/productName" />
+
+        <TextView
+            android:id="@+id/textView26"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Unit Selling"
+            android:textColor="#0071c1"
+            android:textSize="11sp"
+            app:layout_constraintBottom_toBottomOf="@+id/unitSelling"
+            app:layout_constraintStart_toStartOf="@+id/textView24"
+            app:layout_constraintTop_toTopOf="@+id/unitSelling" />
+
+        <TextView
+            android:id="@+id/textView40"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Unit Cost"
+            android:textColor="#0071c1"
+            android:textSize="11sp"
+            app:layout_constraintBottom_toBottomOf="@+id/unitCost"
+            app:layout_constraintStart_toStartOf="@+id/textView26"
+            app:layout_constraintTop_toTopOf="@+id/unitCost" />
+
+        <TextView
+            android:id="@+id/textView42"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Case Qty:"
+            android:textColor="#0071c1"
+            android:textSize="11sp"
+            app:layout_constraintBottom_toBottomOf="@+id/caseQty"
+            app:layout_constraintStart_toStartOf="@+id/textView40"
+            app:layout_constraintTop_toTopOf="@+id/caseQty" />
+
+        <TextView
+            android:id="@+id/textView43"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Min Order:"
+            android:textColor="#0071c1"
+            android:textSize="11sp"
+            app:layout_constraintBottom_toBottomOf="@+id/minOrder"
+            app:layout_constraintStart_toStartOf="@+id/textView42"
+            app:layout_constraintTop_toTopOf="@+id/minOrder" />
+
+        <androidx.cardview.widget.CardView
+            android:id="@+id/cardView3"
+            android:layout_width="80dp"
+            android:layout_height="30dp"
+            android:layout_marginTop="24dp"
+            app:cardBackgroundColor="#0071c1"
+            app:cardCornerRadius="5dp"
+            app:layout_constraintEnd_toEndOf="@+id/minOrder"
+            app:layout_constraintTop_toBottomOf="@+id/minOrder">
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <ImageView
+                    android:id="@+id/imageView21"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp"
+                    android:src="@drawable/double_arrows"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+                <TextView
+                    android:id="@+id/textView44"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp"
+                    android:text="Location"
+                    android:textColor="#fff"
+                    android:textSize="11sp"
+                    app:layout_constraintBottom_toBottomOf="@+id/imageView21"
+                    app:layout_constraintEnd_toStartOf="@+id/imageView21"
+                    app:layout_constraintTop_toTopOf="@+id/imageView21" />
+            </androidx.constraintlayout.widget.ConstraintLayout>
+        </androidx.cardview.widget.CardView>
+
+        <ImageView
+            android:id="@+id/btnImage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="-20dp"
+            android:src="@drawable/ic_menu_camera"
+            app:layout_constraintStart_toStartOf="@+id/stockImage"
+            app:layout_constraintTop_toBottomOf="@+id/stockImage" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</FrameLayout>

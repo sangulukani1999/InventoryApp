@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/navigation"
+    app:startDestination="@id/info2">
+
+    <fragment
+        android:id="@+id/info2"
+        android:name="com.example.zed.info"
+        android:label="fragment_info"
+        tools:layout="@layout/fragment_info" />
+    <fragment
+        android:id="@+id/inventory_fragment"
+        android:name="com.example.zed.inventory_fragment"
+        android:label="fragment_inventory_fragment"
+        tools:layout="@layout/fragment_inventory_fragment" />
+    <fragment
+        android:id="@+id/notFoundFragment"
+        android:name="com.example.zed.notFoundFragment"
+        android:label="fragment_not_found"
+        tools:layout="@layout/fragment_not_found" />
+</navigation>

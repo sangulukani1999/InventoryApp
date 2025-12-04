@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="nav_bar_color">#0071C1</color>
+    <color name="selected_item_color">#0071c1</color>      <!-- Solid blue for selected bubble -->
+    <color name="unselected_item_color">#f1f0f0</color>    <!-- Light grey for unselected bubble -->
+    <color name="selected_text_color">#FFFFFF</color>      <!-- White text for selected bubble -->
+    <color name="unselected_text_color">#0071c1</color>    <!-- Blue text for unselected bubble -->
+    <color name="variance_positive">#4CAF50</color> <!-- Green -->
+    <color name="variance_negative">#F44336</color> <!-- Red -->
+    <color name="variance_zero">#808080</color>   <!-- Grey -->
+
+
+
+</resources>

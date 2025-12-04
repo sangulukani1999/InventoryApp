@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="10dp"
+    android:layout_marginBottom="10dp"
+    android:backgroundTint="#b62e2e"
+    android:foregroundTint="#b62e2e"
+    tools:context=".detailsStock">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <Button
+            android:id="@+id/btnRemoveUnit"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:layout_marginTop="8dp"
+            android:background="#b62e2e"
+            android:text="remove"
+            android:textSize="9sp"
+            app:backgroundTint="#b62e2e"
+            app:layout_constraintEnd_toEndOf="@+id/shelf_spinner_add"
+            app:layout_constraintTop_toBottomOf="@+id/shelf_spinner" />
+
+        <androidx.cardview.widget.CardView
+            android:id="@+id/aisle_spinner_add"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            app:cardBackgroundColor="#1a5679"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <ImageView
+                    android:id="@+id/imageView24"
+                    android:layout_width="15dp"
+                    android:layout_height="15dp"
+                    android:src="@drawable/plus"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+            </androidx.constraintlayout.widget.ConstraintLayout>
+        </androidx.cardview.widget.CardView>
+
+        <androidx.cardview.widget.CardView
+            android:id="@+id/rack_spinner_add"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_marginTop="16dp"
+            app:cardBackgroundColor="#1a5679"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/aisle_spinner_add">
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <ImageView
+                    android:id="@+id/imageView25"
+                    android:layout_width="15dp"
+                    android:layout_height="15dp"
+                    android:src="@drawable/plus"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+            </androidx.constraintlayout.widget.ConstraintLayout>
+        </androidx.cardview.widget.CardView>
+
+        <androidx.cardview.widget.CardView
+            android:id="@+id/shelf_spinner_add"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_marginTop="16dp"
+            app:cardBackgroundColor="#1a5679"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/rack_spinner_add">
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <ImageView
+                    android:id="@+id/imageView26"
+                    android:layout_width="15dp"
+                    android:layout_height="15dp"
+                    android:src="@drawable/plus"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+            </androidx.constraintlayout.widget.ConstraintLayout>
+        </androidx.cardview.widget.CardView>
+
+        <Spinner
+            android:id="@+id/aisle_spinner"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/spinner_border"
+            app:layout_constraintEnd_toStartOf="@+id/aisle_spinner_add"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="@+id/aisle_spinner_add" />
+
+        <ImageView
+            android:layout_width="15dp"
+            android:layout_height="15dp"
+            android:layout_marginEnd="8dp"
+            android:src="@drawable/drop_down_option_arrow"
+            app:layout_constraintBottom_toBottomOf="@+id/aisle_spinner"
+            app:layout_constraintEnd_toEndOf="@+id/aisle_spinner"
+            app:layout_constraintTop_toTopOf="@+id/aisle_spinner" />
+
+        <Spinner
+            android:id="@+id/rack_spinner"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/spinner_border"
+            app:layout_constraintEnd_toStartOf="@+id/rack_spinner_add"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="@+id/rack_spinner_add" />
+
+        <Spinner
+            android:id="@+id/shelf_spinner"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/spinner_border"
+            app:layout_constraintEnd_toStartOf="@+id/shelf_spinner_add"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="@+id/shelf_spinner_add" />
+
+        <ImageView
+            android:id="@+id/imageView27"
+            android:layout_width="15dp"
+            android:layout_height="15dp"
+            android:layout_marginEnd="8dp"
+            android:src="@drawable/drop_down_option_arrow"
+            app:layout_constraintBottom_toBottomOf="@+id/rack_spinner"
+            app:layout_constraintEnd_toEndOf="@+id/rack_spinner"
+            app:layout_constraintTop_toTopOf="@+id/rack_spinner" />
+
+        <ImageView
+            android:id="@+id/imageView28"
+            android:layout_width="15dp"
+            android:layout_height="15dp"
+            android:layout_marginEnd="8dp"
+            android:src="@drawable/drop_down_option_arrow"
+            app:layout_constraintBottom_toBottomOf="@+id/shelf_spinner"
+            app:layout_constraintEnd_toEndOf="@+id/shelf_spinner"
+            app:layout_constraintTop_toTopOf="@+id/shelf_spinner" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</FrameLayout>

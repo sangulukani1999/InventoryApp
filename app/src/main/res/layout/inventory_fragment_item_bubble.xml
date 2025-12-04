@@ -1,0 +1,15 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:elevation="2dp"
+    android:padding="5dp">
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/bubbleSelector"
+        android:layout_width="18dp"
+        android:layout_height="18dp"
+        app:cardBackgroundColor="#C6C6CD"
+        app:cardCornerRadius="50dp"
+        app:cardElevation="0dp" />
+</LinearLayout>
