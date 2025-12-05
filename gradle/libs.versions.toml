@@ -45,6 +45,8 @@ junitVersion = "1.2.1"
 espressoCore = "3.6.1"
 legacySupportV4 = "1.0.0"
 coreAnimation = "1.0.0"
+playServicesMlkitBarcodeScanning = "18.3.1"
+objectDetection = "17.0.2"
 
 [libraries]
 # AndroidX & UI
@@ -95,6 +97,8 @@ androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "j
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 androidx-legacy-support-v4 = { group = "androidx.legacy", name = "legacy-support-v4", version.ref = "legacySupportV4" }
 androidx-core-animation = { group = "androidx.core", name = "core-animation", version.ref = "coreAnimation" }
+play-services-mlkit-barcode-scanning = { group = "com.google.android.gms", name = "play-services-mlkit-barcode-scanning", version.ref = "playServicesMlkitBarcodeScanning" }
+object1-detection = { group = "com.google.mlkit", name = "object-detection", version.ref = "objectDetection" }
 
 
 [plugins]

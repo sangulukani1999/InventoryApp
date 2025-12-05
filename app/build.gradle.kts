@@ -100,6 +100,8 @@ dependencies {
     implementation(libs.google.http.client.gson)
     implementation(libs.androidx.legacy.support.v4)
     implementation(libs.androidx.core.animation)
+    implementation(libs.play.services.mlkit.barcode.scanning)
+    implementation(libs.object1.detection)
     // ✅ ADD THIS LINE - THIS IS THE FIX FOR THE 'extensions' ERROR
     //implementation(libs.google.api.client.googleapis.extensions)
 

@@ -1,0 +1,26 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#3F51B5">
+
+    <!-- Camera Preview goes here -->
+    <androidx.camera.view.PreviewView
+        android:id="@+id/cameraPreview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <Button
+        android:id="@+id/closeButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="16dp"
+        android:background="#0071c1"
+        android:backgroundTint="#0071c1"
+        android:text="Close"
+        android:textColorHighlight="#0071c1"
+        android:textColorHint="#0071c1"
+        android:textColorLink="#0071c1"
+        app:rippleColor="#0071c1" />
+</FrameLayout>

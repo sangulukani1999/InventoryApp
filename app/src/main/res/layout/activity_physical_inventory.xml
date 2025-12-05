@@ -23,7 +23,7 @@
             android:layout_height="match_parent">
 
             <ImageButton
-                android:id="@+id/imageView3"
+                android:id="@+id/reload_btn"
                 android:layout_width="25dp"
                 android:layout_height="25dp"
                 android:layout_marginTop="16dp"
@@ -41,9 +41,9 @@
                 android:textColor="#fff"
                 android:textSize="7.2sp"
                 android:textStyle="normal"
-                app:layout_constraintEnd_toEndOf="@+id/imageView3"
-                app:layout_constraintStart_toStartOf="@+id/imageView3"
-                app:layout_constraintTop_toBottomOf="@+id/imageView3" />
+                app:layout_constraintEnd_toEndOf="@+id/reload_btn"
+                app:layout_constraintStart_toStartOf="@+id/reload_btn"
+                app:layout_constraintTop_toBottomOf="@+id/reload_btn" />
 
             <TextView
                 android:id="@+id/itemTitle"
