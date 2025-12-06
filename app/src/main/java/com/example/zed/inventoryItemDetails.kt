@@ -1029,16 +1029,5 @@ class InventoryItemDetails : AppCompatActivity() {
 }
 
 // ✅ This adapter is a top-level class. It has no secret link to any single activity instance.
-private class SuggestionAdapter(context: Context, cursor: Cursor) :
-    androidx.cursoradapter.widget.CursorAdapter(context, cursor, false) {
+// Now this line will work in ANY file, not just InventoryItemDetails.kt
 
-    override fun newView(context: Context, cursor: Cursor, parent: ViewGroup): View {
-        return LayoutInflater.from(context).inflate(android.R.layout.simple_list_item_1, parent, false)
-    }
-
-    override fun bindView(view: View, context: Context, cursor: Cursor) {
-        val textView = view.findViewById<TextView>(android.R.id.text1)
-        val text = cursor.getString(1) // Column index 1 is "productName"
-        textView.text = text
-    }
-}

@@ -70,7 +70,7 @@
                 app:srcCompat="@drawable/back_icon" />
 
             <ImageView
-                android:id="@+id/imageView14"
+                android:id="@+id/barcodeScanner3"
                 android:layout_width="59dp"
                 android:layout_height="14dp"
                 android:layout_marginRight="10dp"
