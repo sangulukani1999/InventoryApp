@@ -320,7 +320,7 @@ class stockTaking : AppCompatActivity() {
         val userEmail = currentUser.email!!
         checkUserRole(userEmail) { exists, parentEmail ->
             if (exists) {
-                MyBottomStockSheet(userEmail, parentEmail) {
+                bottom_sheet_commit(userEmail, parentEmail) {
                     // Optional: Refresh data after adding a new product
                 }.show(supportFragmentManager, "AddProductBottomSheet")
             } else {
