@@ -63,8 +63,8 @@
 
             <TextView
                 android:id="@+id/productNameInventory"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_width="150dp"
+                android:layout_height="30dp"
                 android:layout_marginStart="5dp"
                 android:layout_marginTop="5dp"
                 android:text="First Choice Small"

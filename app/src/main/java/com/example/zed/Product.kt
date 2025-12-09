@@ -7,7 +7,7 @@ package com.example.zed
 data class Product(
     val id: String,
     val name: String,
-    val imageUrl: String,
+    val imageUrl: String?, // ✅ FIX: Change String to String?
     val barcode: String,
     val categoryId: String,
     val unit: String,
@@ -28,9 +28,9 @@ data class Location(
 data class UnitOfMeasure(
     val productId: String?,
     val unitBarcode: String?,
-    val sellingPrice: String,  // ✅ This expects a non-nullable String
-    val caseUnits: String,     // ✅ This expects a non-nullable String
-    val quantityDescription: String, // ✅ This expects a non-nullable String
+    val sellingPrice: String,
+    val caseUnits: String,
+    val quantityDescription: String,
     val cost: String?,
     val updatedBy: String?,
     val timestamp: String?

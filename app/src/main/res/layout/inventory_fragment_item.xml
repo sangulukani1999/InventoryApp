@@ -63,15 +63,14 @@
 
             <TextView
                 android:id="@+id/productNameInventory"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="5dp"
+                android:layout_width="200dp"
+                android:layout_height="22dp"
                 android:layout_marginTop="5dp"
                 android:text="First Choice Small"
                 android:textColor="#0071c1"
                 android:textSize="11sp"
                 android:textStyle="bold"
-                app:layout_constraintStart_toEndOf="@+id/productImage"
+                app:layout_constraintStart_toStartOf="@+id/inventoryBarcode"
                 app:layout_constraintTop_toBottomOf="@+id/inventoryBarcode" />
 
             <TextView
