@@ -57,6 +57,7 @@ class MyBottomStockSheet(
 
     // --- UI Views ---
     private var imageUri: Uri? = null
+    private lateinit var quantity_display: EditText
     private lateinit var imageView: ImageView
     private lateinit var btnUpload: ImageView
     private lateinit var btnSubmit: CardView
@@ -78,9 +79,15 @@ class MyBottomStockSheet(
     private lateinit var location_add: CardView
     private lateinit var locationScrollView: NestedScrollView
     private lateinit var addCategoryCardView: CardView
+    private lateinit var unit_of_measure_populates: Spinner
 
+    // --- Data Classes ---
     data class SheetItem(val id: String, val name: String) {
         override fun toString(): String = name
+    }
+
+    data class UnitOfMeasureItem(val description: String, val value: Int) {
+        override fun toString(): String = description // This is what shows in the spinner
     }
 
     // --- Data Lists for Spinners and Validation ---
@@ -88,6 +95,8 @@ class MyBottomStockSheet(
     private val dynamicAisles = mutableListOf<String>()
     private val dynamicRacks = mutableListOf<String>()
     private val dynamicShelves = mutableListOf<String>()
+    private val dynamicUnitsOfMeasure = mutableListOf<UnitOfMeasureItem>() // Session list for the spinner
+    private lateinit var uomAdapter: ArrayAdapter<UnitOfMeasureItem>
 
     // EFFICIENT VALIDATION LISTS
     private val occupiedLocationIds = mutableSetOf<String>()
@@ -106,7 +115,24 @@ class MyBottomStockSheet(
         savedInstanceState: Bundle?
     ): View? {
         val view = inflater.inflate(R.layout.bottom_sheet_stock_layout, container, false)
-        initializeViews(view)
+
+        initializeViews(view) // Initialize all views first
+
+        // --- Setup for the dynamic unit_of_measure_populates Spinner ---
+        // Initialize the session list with a placeholder item
+        if (dynamicUnitsOfMeasure.isEmpty()) {
+            dynamicUnitsOfMeasure.add(UnitOfMeasureItem("Select a defined unit", 0))
+        }
+
+        // Initialize the adapter for the spinner
+        uomAdapter = ArrayAdapter(
+            requireContext(),
+            R.layout.spinner_item,
+            dynamicUnitsOfMeasure
+        )
+        uomAdapter.setDropDownViewResource(R.layout.spinner_item)
+        unit_of_measure_populates.adapter = uomAdapter
+
         setupListeners()
         fetchDynamicData()
         return view
@@ -119,20 +145,27 @@ class MyBottomStockSheet(
         productName = view.findViewById(R.id.productName)
         barcode = view.findViewById(R.id.barcode)
         category = view.findViewById(R.id.category)
-        caseQty = view.findViewById(R.id.qty)
-        minOrder = view.findViewById(R.id.unitCost)
+
+        // --- CORRECTED MAPPINGS ---
+        // These now point to their own unique IDs, which you must ensure exist in your XML layout.
+        caseQty = view.findViewById(R.id.caseQty)
+        minOrder = view.findViewById(R.id.minOrder)
         qty = view.findViewById(R.id.qty)
         unitCost = view.findViewById(R.id.unitCost)
-        unitSelling = view.findViewById(R.id.unitCost)
+        unitSelling = view.findViewById(R.id.unitSelling)
+        quantity_display = view.findViewById(R.id.quantity_display) // This was missing initialization
+
         unitScrollView = view.findViewById(R.id.mainScroll)
         unitContainer = view.findViewById(R.id.unitContainer)
         btnAddUnit = view.findViewById(R.id.btnAddUnit)
-        locationScrollView = view.findViewById(R.id.mainScroll) // This might need correction if you have a separate location scroll view
+        locationScrollView = view.findViewById(R.id.mainScroll)
         locationContainer = view.findViewById(R.id.locationContainer)
         location_add = view.findViewById(R.id.location_add)
         locationCounterTextView = view.findViewById(R.id.location_counter)
         unitCounterTextView = view.findViewById(R.id.unit_counter)
         addCategoryCardView = view.findViewById(R.id.add_category)
+        unit_of_measure_populates = view.findViewById(R.id.unit_of_measure_populates)
+
         locationCounterTextView.text = "0"
         unitCounterTextView.text = "0"
         progressDialog = ProgressDialog(requireContext()).apply {
@@ -229,7 +262,6 @@ class MyBottomStockSheet(
             }
         }
     }
-
     private fun handleSubmission() {
         progressDialog.setMessage("Validating product...")
         progressDialog.show()
@@ -278,10 +310,17 @@ class MyBottomStockSheet(
                 val units = getAllUnitsData()
                 val locations = getAllLocationsData()
 
+                // ✅ **FIX**: Use the calculated value from quantity_display for the case quantity.
+                val finalCaseQty = quantity_display.text.toString()
+
                 progressDialog.setMessage("Uploading product...")
                 uploadImageAndWriteToSheet(
                     account, imageUri!!, SPREADSHEET_NAME, SHEET_TAB_NAME, userEmail,
-                    pName, pBarcode, category.text.toString(), if (caseQty.text.toString().toIntOrNull() ?: 1 > 1) "case" else "single", caseQty.text.toString(), minOrder.text.toString(), qty.text.toString(), unitCost.text.toString(), unitSelling.text.toString(), units, locations
+                    pName, pBarcode, category.text.toString(),
+                    if (caseQty.text.toString().toIntOrNull() ?: 1 > 1) "case" else "single",
+                    finalCaseQty, // Pass the corrected quantity here
+                    minOrder.text.toString(), qty.text.toString(), unitCost.text.toString(),
+                    unitSelling.text.toString(), units, locations
                 )
 
                 withContext(Dispatchers.Main) {
@@ -303,22 +342,79 @@ class MyBottomStockSheet(
         }
     }
 
+    // In MyBottomStockSheet.kt
+
     private fun addUnitView() {
         val inflater = LayoutInflater.from(requireContext())
         val unitView = inflater.inflate(R.layout.unit_of_measure_item, unitContainer, false)
+
+        val unitShelfField = unitView.findViewById<EditText>(R.id.unitShelf) // How many units in case
+        val unitQtyField = unitView.findViewById<EditText>(R.id.unitQty)     // The text part, e.g., "50" for "1 x 50"
         val btnRemove = unitView.findViewById<Button>(R.id.btnRemoveUnit)
+
+        // --- 1. TextWatcher for REAL-TIME CALCULATION ---
+        val calculationWatcher = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                val unitsInCase = unitShelfField.text.toString().toDoubleOrNull() ?: 0.0
+                // The 'qty' field from the main layout is what we use for calculation quantity
+                val quantityOfCases = qty.text.toString().toDoubleOrNull() ?: 0.0
+                val totalUnits = unitsInCase * quantityOfCases
+                quantity_display.setText(String.format("%.0f", totalUnits))
+            }
+        }
+
+        // --- 2. FocusChangeListener for ADDING TO SESSION ---
+        val sessionFocusListener = View.OnFocusChangeListener { view, hasFocus ->
+            // Only act when the view LOSES focus
+            if (!hasFocus) {
+                val unitsInCase = unitShelfField.text.toString().toIntOrNull()
+                val qtyDescriptionPart = unitQtyField.text.toString().trim()
+
+                // Check if both fields are filled to define a new UoM
+                if (unitsInCase != null && qtyDescriptionPart.isNotEmpty()) {
+                    val description = "$qtyDescriptionPart"
+                    val value = unitsInCase
+                    val newUomItem = UnitOfMeasureItem(description, value)
+
+                    // Avoid adding duplicates to the session list
+                    if (!dynamicUnitsOfMeasure.any { it.description == newUomItem.description }) {
+                        dynamicUnitsOfMeasure.add(newUomItem)
+                        uomAdapter.notifyDataSetChanged() // Refresh the spinner
+                        Toast.makeText(context, "Added '$description' to session choices.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+
+        // --- 3. Attach the correct listeners to the fields ---
+        // The calculation runs on every key press in these fields...
+        unitShelfField.addTextChangedListener(calculationWatcher)
+        qty.addTextChangedListener(calculationWatcher) // Also listen to the main quantity field
+
+        // ...but the session is only updated when the user leaves these fields.
+        unitShelfField.onFocusChangeListener = sessionFocusListener
+        unitQtyField.onFocusChangeListener = sessionFocusListener
+
+        // --- Setup Remove Button ---
         btnRemove.setOnClickListener {
             unitContainer.removeView(unitView)
             updateUnitCount()
+            if (unitContainer.childCount == 0) {
+                quantity_display.setText("")
+            }
         }
+
         unitContainer.addView(unitView)
         updateUnitCount()
     }
 
+
+
     private fun updateUnitCount() {
         unitCounterTextView.text = unitContainer.childCount.toString()
     }
-
     private fun addUnitLocationView() {
         val locationView = layoutInflater.inflate(R.layout.location_product_item, locationContainer, false)
         val aisleSpinner = locationView.findViewById<Spinner>(R.id.aisle_spinner)
@@ -434,10 +530,10 @@ class MyBottomStockSheet(
         locationContainer.addView(locationView)
         updateLocationCount()
     }
-
     private fun updateLocationCount() {
         locationCounterTextView.text = locationContainer.childCount.toString()
     }
+
 
     private fun showAddItemDialog(title: String, adapter: ArrayAdapter<String>, spinner: Spinner?) {
         val input = EditText(requireContext()).apply { hint = "Enter new value" }

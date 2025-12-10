@@ -40,6 +40,23 @@
             app:layout_constraintTop_toTopOf="@+id/stockImage" />
 
         <EditText
+            android:id="@+id/quantity_display"
+            android:layout_width="0dp"
+            android:layout_height="24dp"
+            android:background="@drawable/spinner_border"
+            android:ems="10"
+            android:inputType="text"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:textColor="#0071c1"
+            android:textColorHint="#0071c1"
+            android:textSize="9sp"
+            app:layout_constraintBottom_toBottomOf="@+id/qty"
+            app:layout_constraintEnd_toEndOf="@+id/add_category"
+            app:layout_constraintStart_toStartOf="@+id/add_category"
+            app:layout_constraintTop_toTopOf="@+id/qty" />
+
+        <EditText
             android:id="@+id/productName"
             android:layout_width="0dp"
             android:layout_height="24dp"
@@ -63,7 +80,7 @@
             android:layout_marginTop="8dp"
             android:background="@drawable/spinner_border"
             android:ems="10"
-            android:hint="cases"
+            android:hint="quantity"
             android:inputType="text"
             android:paddingStart="8dp"
             android:paddingEnd="8dp"
@@ -71,9 +88,41 @@
             android:textColorHighlight="#0071c1"
             android:textColorHint="#0071c1"
             android:textSize="11sp"
-            app:layout_constraintEnd_toEndOf="@+id/unitCost"
-            app:layout_constraintStart_toStartOf="@+id/textView40"
+            app:layout_constraintEnd_toEndOf="@+id/category"
+            app:layout_constraintStart_toStartOf="@+id/productName"
             app:layout_constraintTop_toBottomOf="@+id/unitCost" />
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:id="@+id/spinnerContainerReference"
+            android:layout_width="0dp"
+            android:layout_height="24dp"
+            app:layout_constraintEnd_toEndOf="@+id/textView24"
+            app:layout_constraintStart_toStartOf="@+id/textView40"
+            app:layout_constraintTop_toTopOf="@+id/qty">
+
+            <Spinner
+                android:id="@+id/unit_of_measure_populates"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:background="@drawable/spinner_border"
+                android:gravity="center_vertical"
+                android:paddingEnd="36dp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <ImageView
+                android:id="@+id/spinner_arrow_1"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:paddingEnd="8dp"
+                android:src="@drawable/drop_down_option_arrow"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
 
         <EditText
             android:id="@+id/unitCost"
@@ -239,7 +288,7 @@
             android:layout_marginTop="24dp"
             android:fillViewport="true"
             android:paddingBottom="50dp"
-            app:layout_constraintEnd_toEndOf="@+id/qty"
+            app:layout_constraintEnd_toEndOf="@+id/add_category"
             app:layout_constraintStart_toStartOf="@+id/stockImage"
             app:layout_constraintTop_toBottomOf="@+id/stockImage">
 
