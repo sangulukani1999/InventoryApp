@@ -1,6 +1,5 @@
 package com.example.zed
 
-import android.app.Dialog
 import android.app.ProgressDialog
 import android.content.Intent
 import android.net.Uri
@@ -28,7 +27,6 @@ import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
 import com.google.api.services.drive.model.File
-import com.google.api.services.drive.model.Permission
 import com.google.api.services.sheets.v4.Sheets
 import com.google.api.services.sheets.v4.SheetsScopes
 import com.google.api.services.sheets.v4.model.*
@@ -103,6 +101,19 @@ class MyBottomStockSheet(
     private val locationNameToIdMap = mutableMapOf<String, String>()
     private val newlySelectedLocationIds = mutableSetOf<String>()
 
+    /**
+     * This is the single, centralized watcher that will be attached to any field
+     * that should trigger a recalculation of the total quantity.
+     */
+    private val mainCalculationWatcher: TextWatcher = object : TextWatcher {
+        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        override fun afterTextChanged(s: Editable?) {
+            // Every time a relevant field changes, run the master calculation function.
+            updateTotalCalculation()
+        }
+    }
+
     private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK) {
             imageUri = result.data?.data
@@ -147,13 +158,12 @@ class MyBottomStockSheet(
         category = view.findViewById(R.id.category)
 
         // --- CORRECTED MAPPINGS ---
-        // These now point to their own unique IDs, which you must ensure exist in your XML layout.
         caseQty = view.findViewById(R.id.caseQty)
         minOrder = view.findViewById(R.id.minOrder)
         qty = view.findViewById(R.id.qty)
         unitCost = view.findViewById(R.id.unitCost)
         unitSelling = view.findViewById(R.id.unitSelling)
-        quantity_display = view.findViewById(R.id.quantity_display) // This was missing initialization
+        quantity_display = view.findViewById(R.id.quantity_display)
 
         unitScrollView = view.findViewById(R.id.mainScroll)
         unitContainer = view.findViewById(R.id.unitContainer)
@@ -181,6 +191,19 @@ class MyBottomStockSheet(
         category.setOnClickListener { showCategoryDialog() }
         addCategoryCardView.setOnClickListener {
             showAddNewCategoryDialog()
+        }
+        // Attach the watcher to the main quantity field.
+        qty.addTextChangedListener(mainCalculationWatcher)
+
+        // Any change in the spinner selection must trigger a recalculation.
+        unit_of_measure_populates.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                updateTotalCalculation()
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {
+                quantity_display.setText("0")
+            }
         }
     }
 
@@ -262,6 +285,35 @@ class MyBottomStockSheet(
             }
         }
     }
+
+    /**
+     * Calculates the total based on the SINGLE selected unit of measure
+     * from the spinner. This version is safe against null selections.
+     */
+    private fun updateTotalCalculation() {
+        // 1. Get the selected item from the spinner.
+        val selectedItem = unit_of_measure_populates.selectedItem as? UnitOfMeasureItem
+
+        // 2. If the selected item is null or it's the placeholder (value 0), the total is 0.
+        if (selectedItem == null || selectedItem.value == 0) {
+            quantity_display.setText("0")
+            return // Stop execution here.
+        }
+
+        // 3. Get the value from the valid selected item.
+        val selectedUnitValue = selectedItem.value.toDouble()
+
+        // 4. Get the main quantity.
+        val quantityOfCases = qty.text.toString().toDoubleOrNull() ?: 0.0
+
+        // 5. Perform the calculation.
+        val grandTotal = selectedUnitValue * quantityOfCases
+
+        // 6. Update the display.
+        quantity_display.setText(String.format("%.0f", grandTotal))
+    }
+
+
     private fun handleSubmission() {
         progressDialog.setMessage("Validating product...")
         progressDialog.show()
@@ -290,7 +342,6 @@ class MyBottomStockSheet(
                     // Check if this specific row is invalid
                     if (aisleSpinner.background.constantState == errorDrawable?.constantState) {
                         isAnyLocationInvalid = true
-                        // REMOVED 'break' to ensure all rows are checked.
                     }
                 }
 
@@ -342,68 +393,60 @@ class MyBottomStockSheet(
         }
     }
 
-    // In MyBottomStockSheet.kt
-
     private fun addUnitView() {
         val inflater = LayoutInflater.from(requireContext())
         val unitView = inflater.inflate(R.layout.unit_of_measure_item, unitContainer, false)
 
         val unitShelfField = unitView.findViewById<EditText>(R.id.unitShelf) // How many units in case
-        val unitQtyField = unitView.findViewById<EditText>(R.id.unitQty)     // The text part, e.g., "50" for "1 x 50"
+        val unitQtyField = unitView.findViewById<EditText>(R.id.unitQty)     // The text part, e.g., "50g"
         val btnRemove = unitView.findViewById<Button>(R.id.btnRemoveUnit)
 
-        // --- 1. TextWatcher for REAL-TIME CALCULATION ---
-        val calculationWatcher = object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                val unitsInCase = unitShelfField.text.toString().toDoubleOrNull() ?: 0.0
-                // The 'qty' field from the main layout is what we use for calculation quantity
-                val quantityOfCases = qty.text.toString().toDoubleOrNull() ?: 0.0
-                val totalUnits = unitsInCase * quantityOfCases
-                quantity_display.setText(String.format("%.0f", totalUnits))
-            }
-        }
-
-        // --- 2. FocusChangeListener for ADDING TO SESSION ---
-        val sessionFocusListener = View.OnFocusChangeListener { view, hasFocus ->
-            // Only act when the view LOSES focus
+        // --- Session Focus Listener (This defines the options for the spinner) ---
+        val sessionFocusListener = View.OnFocusChangeListener { _, hasFocus ->
             if (!hasFocus) {
                 val unitsInCase = unitShelfField.text.toString().toIntOrNull()
                 val qtyDescriptionPart = unitQtyField.text.toString().trim()
 
-                // Check if both fields are filled to define a new UoM
                 if (unitsInCase != null && qtyDescriptionPart.isNotEmpty()) {
-                    val description = "$qtyDescriptionPart"
-                    val value = unitsInCase
-                    val newUomItem = UnitOfMeasureItem(description, value)
+                    val description = qtyDescriptionPart
+                    val newUomItem = UnitOfMeasureItem(description, unitsInCase)
 
-                    // Avoid adding duplicates to the session list
                     if (!dynamicUnitsOfMeasure.any { it.description == newUomItem.description }) {
                         dynamicUnitsOfMeasure.add(newUomItem)
-                        uomAdapter.notifyDataSetChanged() // Refresh the spinner
+                        uomAdapter.notifyDataSetChanged()
+                        // Automatically select the newly added item
+                        val newPosition = uomAdapter.getPosition(newUomItem)
+                        unit_of_measure_populates.setSelection(newPosition)
                         Toast.makeText(context, "Added '$description' to session choices.", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
         }
 
-        // --- 3. Attach the correct listeners to the fields ---
-        // The calculation runs on every key press in these fields...
-        unitShelfField.addTextChangedListener(calculationWatcher)
-        qty.addTextChangedListener(calculationWatcher) // Also listen to the main quantity field
-
-        // ...but the session is only updated when the user leaves these fields.
+        // Attach the focus listener.
         unitShelfField.onFocusChangeListener = sessionFocusListener
         unitQtyField.onFocusChangeListener = sessionFocusListener
 
         // --- Setup Remove Button ---
         btnRemove.setOnClickListener {
+            val descriptionToRemove = unitQtyField.text.toString().trim()
+
+            // 1. Remove the view from the layout.
             unitContainer.removeView(unitView)
             updateUnitCount()
-            if (unitContainer.childCount == 0) {
-                quantity_display.setText("")
+
+            // 2. If the description is valid, find and remove it from the data source.
+            if (descriptionToRemove.isNotEmpty()) {
+                val itemToRemove = dynamicUnitsOfMeasure.find { it.description == descriptionToRemove }
+                if (itemToRemove != null) {
+                    dynamicUnitsOfMeasure.remove(itemToRemove)
+                    // 3. Notify the adapter AFTER the data source is modified.
+                    uomAdapter.notifyDataSetChanged()
+                    Toast.makeText(context, "Removed '$descriptionToRemove' from session choices.", Toast.LENGTH_SHORT).show()
+                }
             }
+            // 4. Finally, trigger a recalculation which will now safely handle the updated spinner state.
+            updateTotalCalculation()
         }
 
         unitContainer.addView(unitView)
@@ -411,10 +454,14 @@ class MyBottomStockSheet(
     }
 
 
-
     private fun updateUnitCount() {
         unitCounterTextView.text = unitContainer.childCount.toString()
     }
+
+    private fun updateLocationCount() {
+        locationCounterTextView.text = locationContainer.childCount.toString()
+    }
+
     private fun addUnitLocationView() {
         val locationView = layoutInflater.inflate(R.layout.location_product_item, locationContainer, false)
         val aisleSpinner = locationView.findViewById<Spinner>(R.id.aisle_spinner)
@@ -497,6 +544,7 @@ class MyBottomStockSheet(
                 }
                 checkLocationAvailability()
             }
+
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
@@ -511,6 +559,7 @@ class MyBottomStockSheet(
                 }
                 checkLocationAvailability()
             }
+
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
@@ -518,6 +567,7 @@ class MyBottomStockSheet(
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 checkLocationAvailability()
             }
+
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
@@ -530,19 +580,14 @@ class MyBottomStockSheet(
         locationContainer.addView(locationView)
         updateLocationCount()
     }
-    private fun updateLocationCount() {
-        locationCounterTextView.text = locationContainer.childCount.toString()
-    }
-
 
     private fun showAddItemDialog(title: String, adapter: ArrayAdapter<String>, spinner: Spinner?) {
         val input = EditText(requireContext()).apply { hint = "Enter new value" }
         val container = FrameLayout(requireContext())
-        val params = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            .apply {
-                leftMargin = (19 * resources.displayMetrics.density).toInt()
-                rightMargin = (19 * resources.displayMetrics.density).toInt()
-            }
+        val params = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            leftMargin = (19 * resources.displayMetrics.density).toInt()
+            rightMargin = (19 * resources.displayMetrics.density).toInt()
+        }
         input.layoutParams = params
         container.addView(input)
 
@@ -760,7 +805,8 @@ class MyBottomStockSheet(
 
     private suspend fun uploadImageAndWriteToSheet(
         account: GoogleSignInAccount, uri: Uri, spreadsheetName: String, sheetTabName: String, email: String,
-        prodName: String, barcode: String, categoryName: String, unit: String, caseQty: String,
+        prodName: String, barcode: String, categoryName: String, unit: String,
+        caseQty: String,
         minOrder: String, qty: String, unitCost: String, unitSelling: String,
         units: List<Map<String, String>>, locations: List<Map<String, String>>
     ) {
