@@ -63,11 +63,8 @@ class MyBottomStockSheet(
     private lateinit var productName: EditText
     private lateinit var barcode: EditText
     private lateinit var category: TextView
-    private lateinit var caseQty: EditText
-    private lateinit var minOrder: EditText
     private lateinit var qty: EditText
     private lateinit var unitCost: EditText
-    private lateinit var unitSelling: EditText
     private lateinit var unitCounterTextView: TextView
     private lateinit var unitContainer: LinearLayout
     private lateinit var btnAddUnit: CardView
@@ -158,11 +155,9 @@ class MyBottomStockSheet(
         category = view.findViewById(R.id.category)
 
         // --- CORRECTED MAPPINGS ---
-        caseQty = view.findViewById(R.id.caseQty)
-        minOrder = view.findViewById(R.id.minOrder)
         qty = view.findViewById(R.id.qty)
         unitCost = view.findViewById(R.id.unitCost)
-        unitSelling = view.findViewById(R.id.unitSelling)
+
         quantity_display = view.findViewById(R.id.quantity_display)
 
         unitScrollView = view.findViewById(R.id.mainScroll)
@@ -368,10 +363,10 @@ class MyBottomStockSheet(
                 uploadImageAndWriteToSheet(
                     account, imageUri!!, SPREADSHEET_NAME, SHEET_TAB_NAME, userEmail,
                     pName, pBarcode, category.text.toString(),
-                    if (caseQty.text.toString().toIntOrNull() ?: 1 > 1) "case" else "single",
+                    "single",
                     finalCaseQty, // Pass the corrected quantity here
-                    minOrder.text.toString(), qty.text.toString(), unitCost.text.toString(),
-                    unitSelling.text.toString(), units, locations
+                    "single", qty.text.toString(), unitCost.text.toString(),
+                    "null", units, locations
                 )
 
                 withContext(Dispatchers.Main) {
@@ -401,35 +396,54 @@ class MyBottomStockSheet(
         val unitQtyField = unitView.findViewById<EditText>(R.id.unitQty)     // The text part, e.g., "50g"
         val btnRemove = unitView.findViewById<Button>(R.id.btnRemoveUnit)
 
-        // --- Session Focus Listener (This defines the options for the spinner) ---
-        val sessionFocusListener = View.OnFocusChangeListener { _, hasFocus ->
-            if (!hasFocus) {
+        // --- Session Focus Listener (With Upsert Logic) ---
+        var oldDescription: String? = null
+        unitQtyField.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                // When user clicks INTO the field, store the current description
+                oldDescription = unitQtyField.text.toString().trim()
+            } else {
+                // When user clicks OUT of the field, perform the update/insert logic
                 val unitsInCase = unitShelfField.text.toString().toIntOrNull()
-                val qtyDescriptionPart = unitQtyField.text.toString().trim()
+                val newDescription = unitQtyField.text.toString().trim()
 
-                if (unitsInCase != null && qtyDescriptionPart.isNotEmpty()) {
-                    val description = qtyDescriptionPart
-                    val newUomItem = UnitOfMeasureItem(description, unitsInCase)
+                if (unitsInCase != null && newDescription.isNotEmpty()) {
+                    // Remove the old entry if the description text was changed
+                    if (!oldDescription.isNullOrEmpty() && oldDescription != newDescription) {
+                        dynamicUnitsOfMeasure.removeAll { it.description == oldDescription }
+                    }
 
-                    if (!dynamicUnitsOfMeasure.any { it.description == newUomItem.description }) {
+                    // Find an existing item with the new description
+                    val existingItem = dynamicUnitsOfMeasure.find { it.description == newDescription }
+                    if (existingItem != null) {
+                        // PROBLEM 1 FIX: Update existing item's value
+                        val index = dynamicUnitsOfMeasure.indexOf(existingItem)
+                        dynamicUnitsOfMeasure[index] = UnitOfMeasureItem(newDescription, unitsInCase)
+                        Toast.makeText(context, "Updated '$newDescription'.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        // Insert new item
+                        val newUomItem = UnitOfMeasureItem(newDescription, unitsInCase)
                         dynamicUnitsOfMeasure.add(newUomItem)
-                        uomAdapter.notifyDataSetChanged()
-                        // Automatically select the newly added item
-                        val newPosition = uomAdapter.getPosition(newUomItem)
-                        unit_of_measure_populates.setSelection(newPosition)
-                        Toast.makeText(context, "Added '$description' to session choices.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Added '$newDescription' to session choices.", Toast.LENGTH_SHORT).show()
+                    }
+
+                    uomAdapter.notifyDataSetChanged()
+                    // Ensure the spinner selects the item we just added/edited
+                    val currentPosition = dynamicUnitsOfMeasure.indexOfFirst { it.description == newDescription }
+                    if (currentPosition != -1) {
+                        unit_of_measure_populates.setSelection(currentPosition)
                     }
                 }
             }
         }
+        // Also trigger the "upsert" if the value field is changed
+        unitShelfField.onFocusChangeListener = unitQtyField.onFocusChangeListener
 
-        // Attach the focus listener.
-        unitShelfField.onFocusChangeListener = sessionFocusListener
-        unitQtyField.onFocusChangeListener = sessionFocusListener
 
-        // --- Setup Remove Button ---
+        // --- Setup Remove Button (With Crash Fix) ---
         btnRemove.setOnClickListener {
             val descriptionToRemove = unitQtyField.text.toString().trim()
+            val currentlySelectedItem = unit_of_measure_populates.selectedItem as? UnitOfMeasureItem
 
             // 1. Remove the view from the layout.
             unitContainer.removeView(unitView)
@@ -439,19 +453,28 @@ class MyBottomStockSheet(
             if (descriptionToRemove.isNotEmpty()) {
                 val itemToRemove = dynamicUnitsOfMeasure.find { it.description == descriptionToRemove }
                 if (itemToRemove != null) {
+                    val wasCurrentlySelected = currentlySelectedItem?.description == itemToRemove.description
+
                     dynamicUnitsOfMeasure.remove(itemToRemove)
-                    // 3. Notify the adapter AFTER the data source is modified.
-                    uomAdapter.notifyDataSetChanged()
+                    uomAdapter.notifyDataSetChanged() // Update the adapter with the removed item
+
+                    // PROBLEM 2 FIX: If the item we just removed WAS the selected one,
+                    // manually set the selection to the safe placeholder (position 0).
+                    if (wasCurrentlySelected) {
+                        unit_of_measure_populates.setSelection(0)
+                    }
+
                     Toast.makeText(context, "Removed '$descriptionToRemove' from session choices.", Toast.LENGTH_SHORT).show()
                 }
             }
-            // 4. Finally, trigger a recalculation which will now safely handle the updated spinner state.
+            // 4. Finally, trigger a recalculation. This will now run on a valid spinner selection.
             updateTotalCalculation()
         }
 
         unitContainer.addView(unitView)
         updateUnitCount()
     }
+
 
 
     private fun updateUnitCount() {
