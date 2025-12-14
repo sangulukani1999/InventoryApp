@@ -364,7 +364,7 @@ class InventoryItemDetails : AppCompatActivity() {
                 val stockInCases = productRow.getOrNull(6)?.toString()?.toDoubleOrNull() ?: 0.0
                 val rawLocationString = productRow.getOrNull(9)?.toString() ?: ""
                 val highestUnit = unitList.mapNotNull { it.caseUnits.toIntOrNull() }.maxOrNull() ?: 1
-                val totalStockInUnits = stockInCases * highestUnit
+                val totalStockInUnits = stockInCases
 
                 val assignedLocationIds = Regex("LOC-[A-Z0-9]+", RegexOption.IGNORE_CASE)
                     .findAll(rawLocationString)
@@ -696,7 +696,7 @@ class InventoryItemDetails : AppCompatActivity() {
         val dialog = AlertDialog.Builder(this).setView(dialogView).create()
         dialogView.findViewById<View>(R.id.OkView)?.setOnClickListener {
             val quantityEntered = inputDisplay.text.toString().toIntOrNull()
-            if (quantityEntered == null || quantityEntered <= 0) {
+            if (quantityEntered == null || quantityEntered < 0) {
                 Toast.makeText(this, "Please enter a valid quantity", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }

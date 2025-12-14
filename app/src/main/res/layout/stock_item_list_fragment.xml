@@ -63,14 +63,16 @@
 
             <TextView
                 android:id="@+id/productNameInventory"
-                android:layout_width="150dp"
+                android:layout_width="0dp"
                 android:layout_height="30dp"
                 android:layout_marginStart="5dp"
                 android:layout_marginTop="5dp"
+                android:layout_marginEnd="16dp"
                 android:text="First Choice Small"
                 android:textColor="#0071c1"
                 android:textSize="11sp"
                 android:textStyle="bold"
+                app:layout_constraintEnd_toStartOf="@+id/uncountedLocationsRecyclerView"
                 app:layout_constraintStart_toEndOf="@+id/productImage"
                 app:layout_constraintTop_toBottomOf="@+id/inventoryBarcode" />
 
@@ -82,7 +84,7 @@
                 android:layout_marginRight="10dp"
                 android:text="QTY"
                 android:textColor="#0071c1"
-                android:textSize="16sp"
+                android:textSize="11sp"
                 android:textStyle="bold"
                 app:layout_constraintBottom_toTopOf="@+id/recyclerViewBubble"
                 app:layout_constraintEnd_toStartOf="@+id/inventoryVariance"
@@ -95,7 +97,7 @@
                 android:layout_marginEnd="5dp"
                 android:text="23"
                 android:textColor="#0071c1"
-                android:textSize="16sp"
+                android:textSize="11sp"
                 android:textStyle="bold"
                 app:layout_constraintBottom_toBottomOf="@+id/uncountedLocationsRecyclerView"
                 app:layout_constraintEnd_toEndOf="parent"

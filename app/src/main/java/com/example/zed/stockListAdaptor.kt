@@ -75,39 +75,48 @@ class stockListAdaptor(
 
                 val currentBarcode = inventoryBarcodes[position]
                 val currentProductName = productNameInventorys[position]
+                val baseQty = inventoryQuantitys.getOrNull(position)?.toDoubleOrNull() ?: 0.0
 
                 inventoryBarcode.text = currentBarcode
                 productNameInventory.text = currentProductName
                 ProductPriceInventory.text = "ZMW ${productPriceInventory[position]}"
 
-                // --- THIS IS THE NEW LOGIC ---
+                // --- THIS IS THE PRIMARY LOGIC ---
 
                 // 1. Get all units of measure for the current product.
                 val unitsForThisProduct = inventoryUnits.getOrNull(position) ?: emptyList()
 
                 if (unitsForThisProduct.isNotEmpty()) {
-                    // 2. Find the unit with the highest 'caseUnits' value.
-                    // We convert 'caseUnits' to an integer for a correct numerical comparison.
-                    val largestUnit = unitsForThisProduct.maxByOrNull { it.caseUnits.toIntOrNull() ?: 1 }
+                    // 2. Find the unit with the highest 'caseUnits' value to be the DEFAULT display.
+                    val largestUnit = unitsForThisProduct.maxByOrNull { it.caseUnits.toDoubleOrNull() ?: 1.0 }
 
                     if (largestUnit != null) {
-                        // 3. Set the text based on the found unit.
+                        // 3. Set the default text based on the found unit.
                         productQtyDescription.text = largestUnit.quantityDescription
-                        inventoryVariance.text = largestUnit.caseUnits
+
+                        // --- THIS IS THE DEFAULT CALCULATION ---
+                        val unitCaseQty = largestUnit.caseUnits.toDoubleOrNull() ?: 1.0
+
+                        val calculatedQty = if (unitCaseQty > 0) {
+                            baseQty / unitCaseQty
+                        } else {
+                            0.0
+                        }
+                        inventoryVariance.text = String.format("%.0f", calculatedQty)
+                        // --- END OF DEFAULT CALCULATION ---
+
                     } else {
-                        // Fallback if maxByOrNull returns null (should be rare)
+                        // Fallback if no valid largest unit is found
                         productQtyDescription.text = "cases"
-                        inventoryVariance.text = inventoryQuantitys[position]
+                        inventoryVariance.text = String.format("%.0f", baseQty)
                     }
                 } else {
-                    // 4. Fallback for products that have no specific units of measure defined.
-                    // It will use the default 'caseQty' from the Products sheet.
+                    // 4. Fallback for products with no defined units.
                     productQtyDescription.text = "cases"
-                    inventoryVariance.text = inventoryQuantitys[position]
+                    inventoryVariance.text = String.format("%.0f", baseQty)
                 }
 
-                // --- END OF NEW LOGIC ---
-
+                // --- END OF PRIMARY LOGIC ---
 
                 // --- Image Loading Logic (unchanged) ---
                 val originalUrl = ProductImageUrl.getOrNull(position)
@@ -136,7 +145,7 @@ class stockListAdaptor(
                 } else { productImage.setImageResource(R.drawable.ic_placeholder) }
 
 
-                // --- Bubble Logic with VERY EXPLICIT Comparison Logging ---
+                // --- Bubble Logic (unchanged)---
                 Log.d(logTag, "--- Step 7: Binding Bubbles for '${currentProductName}' (Barcode: $currentBarcode) ---")
                 val locationsForItem = inventoryLocations.getOrNull(position) ?: emptyList()
                 Log.d(logTag, "   - Received ${locationsForItem.size} location objects for this product.")
@@ -169,22 +178,34 @@ class stockListAdaptor(
                 }
 
 
-                // --- Unit of Measure Recycler View Logic (unchanged) ---
+                // --- Unit of Measure Recycler View Logic (WITH NEW CALCULATION) ---
                 if (unitsForThisProduct.isEmpty()) {
                     productQtyRecyclerView.visibility = View.GONE
                 } else {
                     productQtyRecyclerView.visibility = View.VISIBLE
+                    // The click listener now contains the new calculation logic
                     val unitAdapter = UnitOfMeasureAdapter(unitsForThisProduct) { selectedUnit ->
+                        // Update price and description as before
                         ProductPriceInventory.text = "ZMW ${selectedUnit.sellingPrice}"
-                        // Also update the main text when a different unit is clicked
                         productQtyDescription.text = selectedUnit.quantityDescription
-                        inventoryVariance.text = selectedUnit.caseUnits
+
+                        // --- NEW DYNAMIC CALCULATION ON CLICK ---
+                        val selectedUnitCaseQty = selectedUnit.caseUnits.toDoubleOrNull() ?: 1.0
+                        val calculatedQtyOnClick = if (selectedUnitCaseQty > 0) {
+                            baseQty / selectedUnitCaseQty
+                        } else {
+                            0.0
+                        }
+                        inventoryVariance.text = String.format("%.0f", calculatedQtyOnClick)
+                        // --- END OF NEW DYNAMIC CALCULATION ---
                     }
                     productQtyRecyclerView.layoutManager = LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false)
                     productQtyRecyclerView.adapter = unitAdapter
                 }
             }
         }
+
+
 
 
     }

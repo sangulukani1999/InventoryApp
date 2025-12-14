@@ -45,40 +45,37 @@ class stock_fragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         _binding = ActivityStockFragmentBinding.inflate(inflater, container, false)
-
+        //binding.addProduct.visibility = View.GONE
         binding.StockListRecyclerView.layoutManager = LinearLayoutManager(requireContext())
+        setupClickListeners()
+        fetchInventoryData()
+        return binding.root
+    }
 
+    private fun setupClickListeners() {
         binding.varianceAdd.setOnClickListener {
             val currentUser = Firebase.auth.currentUser
             if (currentUser?.email == null) {
                 Toast.makeText(requireContext(), "Cannot add product: User not signed in.", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-
             val userEmail = currentUser.email!!
             val progressDialog = ProgressDialog(requireContext()).apply {
                 setMessage("Verifying user role...")
                 setCancelable(false)
                 show()
             }
-
             checkUserRole(userEmail) { exists, parentEmail ->
                 progressDialog.dismiss()
                 if (exists) {
-                    val bottomSheet = MyBottomStockSheet(userEmail, parentEmail) {
+                    MyBottomStockSheet(userEmail, parentEmail) {
                         fetchInventoryData() // Refresh callback
-                    }
-                    bottomSheet.show(parentFragmentManager, "MyBottomSheet")
+                    }.show(parentFragmentManager, "MyBottomSheet")
                 } else {
                     Toast.makeText(requireContext(), "Access denied. User not found in registry.", Toast.LENGTH_LONG).show()
                 }
             }
         }
-
-        // Initial fetch of inventory data
-        fetchInventoryData()
-
-        return binding.root
     }
 
     private fun checkUserRole(email: String, callback: (exists: Boolean, parentEmail: String?) -> Unit) {
@@ -90,7 +87,6 @@ class stock_fragment : Fragment() {
             override fun onFailure(call: Call, e: IOException) {
                 activity?.runOnUiThread { callback(false, null) }
             }
-
             override fun onResponse(call: Call, response: Response) {
                 var isFound = false
                 if (response.isSuccessful) {
@@ -101,18 +97,14 @@ class stock_fragment : Fragment() {
                             val mainEmail = obj.optString("email").trim()
                             val subEmail = obj.optString("email sub user").trim()
                             if (email.equals(mainEmail, ignoreCase = true)) {
-                                activity?.runOnUiThread { callback(true, null) }
-                                isFound = true
-                                break
+                                activity?.runOnUiThread { callback(true, null) }; return
                             }
                             if (subEmail.isNotEmpty() && email.equals(subEmail, ignoreCase = true)) {
-                                activity?.runOnUiThread { callback(true, mainEmail) }
-                                isFound = true
-                                break
+                                activity?.runOnUiThread { callback(true, mainEmail) }; return
                             }
                         }
                     } catch (e: JSONException) {
-                        // Handle error
+                        Log.e("UserRoleCheck", "JSON parsing error", e)
                     }
                 }
                 if (!isFound) {
@@ -131,6 +123,9 @@ class stock_fragment : Fragment() {
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
+                val logTag = "DataFlow"
+                Log.d(logTag, "====== STARTING INVENTORY FETCH ======")
+
                 val account = GoogleSignIn.getLastSignedInAccount(requireContext())
                     ?: throw IllegalStateException("User is not signed in. Cannot fetch data.")
 
@@ -138,8 +133,11 @@ class stock_fragment : Fragment() {
                 val driveService = getDriveService(account)
                 val spreadsheetId = findSheetIdByName(driveService, "nia-bridge data")
                     ?: throw IllegalStateException("Spreadsheet 'nia-bridge data' not found.")
+                Log.d(logTag, "Found Spreadsheet ID: $spreadsheetId")
+
 
                 // --- 1. Fetching from Products sheet ---
+                Log.d(logTag, "--- Step 1: Fetching Products ---")
                 val productsRange = "Products!A2:K"
                 val productsResponse = sheetsService.spreadsheets().values().get(spreadsheetId, productsRange).execute()
                 val productList = productsResponse.getValues()?.mapNotNull { row ->
@@ -157,14 +155,15 @@ class stock_fragment : Fragment() {
                         locationIds = row.getOrNull(9)?.toString()?.removeSurrounding("['", "']")?.split("', '")?.filter { it.isNotBlank() } ?: emptyList()
                     )
                 } ?: emptyList()
+                Log.d(logTag, "Found ${productList.size} total products initially.")
 
-                // --- 2. Fetching from Locations sheet ---
-                // ✅ FIXED: Range must be A2:E to include the unique ID in column E
-                val locationsRange = "product_location!A2:E"
+
+                // --- 2. Fetching from Locations sheet (As per your final schema) ---
+                Log.d(logTag, "--- Step 2: Fetching Locations ---")
+                val locationsRange = "product_location!A2:D" // LocationID, Aisle, Rack, Shelf
                 val locationsResponse = sheetsService.spreadsheets().values().get(spreadsheetId, locationsRange).execute()
                 val locationMap = locationsResponse.getValues()?.associate { row ->
-                    // ✅ FIXED: The unique ID is in column E (index 4)
-                    val id = row.getOrNull(4)?.toString() ?: ""
+                    val id = row.getOrNull(0)?.toString() ?: "" // ID is in Column A (index 0)
                     id to Location(
                         id = id,
                         aisle = row.getOrNull(1)?.toString() ?: "N/A",
@@ -172,39 +171,53 @@ class stock_fragment : Fragment() {
                         shelf = row.getOrNull(3)?.toString() ?: "N/A"
                     )
                 } ?: emptyMap()
+                Log.d(logTag, "Built locationMap with ${locationMap.size} entries.")
+
 
                 // --- 3. Fetching from Units sheet ---
+                Log.d(logTag, "--- Step 3: Fetching Units of Measure ---")
                 val unitsRange = "unit_measure!A2:H"
                 val unitsResponse = sheetsService.spreadsheets().values().get(spreadsheetId, unitsRange).execute()
                 val allUnits = unitsResponse.getValues()?.mapNotNull { row ->
                     if (row.size < 8) return@mapNotNull null
                     UnitOfMeasure(
-                        productId = row.getOrNull(0)?.toString() ?: "",
-                        unitBarcode = row.getOrNull(1)?.toString() ?: "",
-                        sellingPrice = row.getOrNull(2)?.toString() ?: "0.00",
-                        caseUnits = row.getOrNull(3)?.toString() ?: "1",
-                        quantityDescription = row.getOrNull(4)?.toString() ?: "Unit",
-                        cost = row.getOrNull(5)?.toString(),
-                        updatedBy = row.getOrNull(6)?.toString(),
-                        timestamp = row.getOrNull(7)?.toString()
+                        productId = row.getOrNull(0)?.toString() ?: "", unitBarcode = row.getOrNull(1)?.toString() ?: "",
+                        sellingPrice = row.getOrNull(2)?.toString() ?: "0.00", caseUnits = row.getOrNull(3)?.toString() ?: "1",
+                        quantityDescription = row.getOrNull(4)?.toString() ?: "Unit", cost = row.getOrNull(5)?.toString(),
+                        updatedBy = row.getOrNull(6)?.toString(), timestamp = row.getOrNull(7)?.toString()
                     )
                 } ?: emptyList()
                 val unitsMap = allUnits.groupBy { it.productId }
+                Log.d(logTag, "Built unitsMap with ${unitsMap.size} product groups.")
 
-                // ✅ --- 4. NEW: FETCH COUNT DATA FOR STATUS CHECKING ---
-                val countDataRange = "countData!B2:D" // Barcode, Timestamp, Location ID
-                val countDataResponse = sheetsService.spreadsheets().values().get(spreadsheetId, countDataRange).execute()
+
+                // --- 4. Fetch Count Data and Aggregating Totals ---
+                Log.d(logTag, "--- Step 4: Fetching Count Data and Aggregating Totals ---")
                 val countedItemsSet = mutableSetOf<String>()
+                val countedQuantitiesMap = mutableMapOf<String, Int>()
+                val countDataRange = "countData!B2:E" // Barcode(B), Timestamp(C), LocationID(D), Qty(E)
+                val countDataResponse = sheetsService.spreadsheets().values().get(spreadsheetId, countDataRange).execute()
                 countDataResponse.getValues()?.forEach { row ->
                     val barcode = row.getOrNull(0)?.toString()
                     val locationId = row.getOrNull(2)?.toString()
-                    if (!barcode.isNullOrBlank() && !locationId.isNullOrBlank()) {
-                        // Create a unique key like "12345-LOC-ABCDE"
-                        countedItemsSet.add("$barcode-$locationId")
+                    val quantity = row.getOrNull(3)?.toString()?.toIntOrNull() ?: 0
+
+                    if (!barcode.isNullOrBlank()) {
+                        // For bubble status
+                        if (!locationId.isNullOrBlank()) {
+                            countedItemsSet.add("$barcode-$locationId")
+                        }
+                        // For variance calculation
+                        val currentTotal = countedQuantitiesMap.getOrDefault(barcode, 0)
+                        countedQuantitiesMap[barcode] = currentTotal + quantity
                     }
                 }
+                Log.d(logTag, "Final 'countedItemsSet' has ${countedItemsSet.size} items.")
+                Log.d(logTag, "Final 'countedQuantitiesMap': $countedQuantitiesMap")
 
-                // --- 5. Prepare data for Adapter ---
+
+                // --- 5. Prepare data for Adapter WITH FILTERING ---
+                Log.d(logTag, "--- Step 5: Preparing and Filtering Data for Adapter ---")
                 val names = mutableListOf<String>()
                 val prices = mutableListOf<String>()
                 val images = mutableListOf<String?>()
@@ -212,25 +225,58 @@ class stock_fragment : Fragment() {
                 val quantities = mutableListOf<String>()
                 val productLocationsList = mutableListOf<List<Location>>()
                 val productUnitsList = mutableListOf<List<UnitOfMeasure>>()
-                // ✅ FIXED: The old statusList is no longer needed
 
                 for (product in productList) {
+                    // --- Prepare all necessary data for this one product ---
                     val locationsForThisProduct = product.locationIds.mapNotNull { locationId -> locationMap[locationId] }
                     val unitsForThisProduct = unitsMap[product.barcode] ?: emptyList()
-                    names.add(product.name)
-                    prices.add(product.unitCost)
-                    images.add(product.imageUrl)
-                    barcodes.add(product.barcode)
-                    quantities.add(product.caseQty)
-                    // ✅ FIXED: No more statusList.add(false)
-                    productLocationsList.add(locationsForThisProduct)
-                    productUnitsList.add(unitsForThisProduct)
-                }
+                    val stockInCases = product.caseQty.toDoubleOrNull() ?: 0.0
+                    val totalStockInUnits = if (unitsForThisProduct.isNotEmpty()) {
+                        val highestUnit = unitsForThisProduct.mapNotNull { it.caseUnits.toIntOrNull() }.maxOrNull() ?: 1
+                        stockInCases * highestUnit
+                    } else {
+                        stockInCases
+                    }
+                    val countedQty = countedQuantitiesMap.getOrDefault(product.barcode, 0)
+                    val variance = totalStockInUnits - countedQty
 
+                    // --- Determine if all its locations have been counted ---
+                    val allLocationsCounted = if (locationsForThisProduct.isEmpty()) {
+                        false // If no locations are assigned, it can't be "fully counted"
+                    } else {
+                        locationsForThisProduct.all { location ->
+                            countedItemsSet.contains("${product.barcode}-${location.id}")
+                        }
+                    }
+
+                    // --- The Filtering Decision ---
+                    // We show the product if the filtering condition is MET.
+                    // The condition to HIDE is (variance is 0 AND all locations are counted).
+                    // So, we show if the opposite is true.
+                    val shouldShowProduct = !(variance == 0.0 && allLocationsCounted)
+
+                    if (shouldShowProduct) {
+                        // If it should be shown, add it to the final lists
+                        Log.d(logTag, "  -> ADDING product '${product.name}' (Variance: $variance, AllLocsCounted: $allLocationsCounted)")
+                        names.add(product.name)
+                        prices.add(product.unitCost)
+                        images.add(product.imageUrl)
+                        barcodes.add(product.barcode)
+                        quantities.add(product.caseQty)
+                        productLocationsList.add(locationsForThisProduct)
+                        productUnitsList.add(unitsForThisProduct)
+                    } else {
+                        Log.d(logTag, "  -> SKIPPING product '${product.name}' (Variance: $variance, AllLocsCounted: $allLocationsCounted)")
+                    }
+                }
+                Log.d(logTag, "Finished filtering. Passing ${names.size} products to the adapter.")
+
+
+                // --- 6. Set Adapter on Main Thread ---
                 withContext(Dispatchers.Main) {
                     progressDialog.dismiss()
+                    Log.d(logTag, "--- Step 6: Setting Adapter on Main Thread ---")
 
-                    // ✅ --- 6. FINAL FIX: Call the adapter with the correct parameters ---
                     val adapter = stockListAdaptor(
                         account = account,
                         onItemClick = { position ->
@@ -254,16 +300,16 @@ class stock_fragment : Fragment() {
                         inventoryLocations = productLocationsList,
                         inventoryUnits = productUnitsList,
                         context = requireContext(),
-                        // Pass the set you created in step 4
-                        countedItems = countedItemsSet
+                        countedItems = countedItemsSet,
                     )
                     binding.StockListRecyclerView.adapter = adapter
+                    Log.d(logTag, "====== INVENTORY FETCH AND DISPLAY COMPLETE ======")
                 }
 
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     progressDialog.dismiss()
-                    Log.e("StockFragmentError", "Error during fetchInventoryData", e)
+                    Log.e("StockFragment", "Error during fetchInventoryData", e)
                     Toast.makeText(context, "Failed to fetch inventory: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
