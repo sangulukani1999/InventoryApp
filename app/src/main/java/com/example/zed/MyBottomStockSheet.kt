@@ -1,5 +1,6 @@
 package com.example.zed
 
+import android.app.Activity
 import android.app.ProgressDialog
 import android.content.Intent
 import android.net.Uri
@@ -15,7 +16,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
-import androidx.core.widget.NestedScrollView
 import androidx.lifecycle.lifecycleScope
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
@@ -33,7 +33,6 @@ import com.google.api.services.sheets.v4.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.FileOutputStream
 import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.*
@@ -68,54 +67,80 @@ class MyBottomStockSheet(
     private lateinit var unitCounterTextView: TextView
     private lateinit var unitContainer: LinearLayout
     private lateinit var btnAddUnit: CardView
-    private lateinit var unitScrollView: NestedScrollView
-    private lateinit var locationCounterTextView: TextView
     private lateinit var locationContainer: LinearLayout
     private lateinit var location_add: CardView
-    private lateinit var locationScrollView: NestedScrollView
+    private lateinit var locationCounterTextView: TextView
     private lateinit var addCategoryCardView: CardView
     private lateinit var unit_of_measure_populates: Spinner
 
-    // --- Data Classes ---
-    data class SheetItem(val id: String, val name: String) {
-        override fun toString(): String = name
-    }
+    // --- Data Classes & Lists---
+    data class SheetItem(val id: String, val name: String) { override fun toString(): String = name }
+    data class UnitOfMeasureItem(val description: String, val value: Int) { override fun toString(): String = description }
 
-    data class UnitOfMeasureItem(val description: String, val value: Int) {
-        override fun toString(): String = description // This is what shows in the spinner
-    }
-
-    // --- Data Lists for Spinners and Validation ---
     private val dynamicCategories = mutableListOf<SheetItem>()
     private val dynamicAisles = mutableListOf<String>()
     private val dynamicRacks = mutableListOf<String>()
     private val dynamicShelves = mutableListOf<String>()
-    private val dynamicUnitsOfMeasure = mutableListOf<UnitOfMeasureItem>() // Session list for the spinner
+    private val dynamicUnitsOfMeasure = mutableListOf<UnitOfMeasureItem>()
     private lateinit var uomAdapter: ArrayAdapter<UnitOfMeasureItem>
-
-    // EFFICIENT VALIDATION LISTS
     private val occupiedLocationIds = mutableSetOf<String>()
     private val locationNameToIdMap = mutableMapOf<String, String>()
     private val newlySelectedLocationIds = mutableSetOf<String>()
+    // Set for checking duplicate barcodes
+    private val existingProductBarcodes = mutableSetOf<String>()
 
-    /**
-     * This is the single, centralized watcher that will be attached to any field
-     * that should trigger a recalculation of the total quantity.
-     */
+
     private val mainCalculationWatcher: TextWatcher = object : TextWatcher {
         override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
         override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-        override fun afterTextChanged(s: Editable?) {
-            // Every time a relevant field changes, run the master calculation function.
-            updateTotalCalculation()
+        override fun afterTextChanged(s: Editable?) { updateTotalCalculation() }
+    }
+
+    // This launcher correctly handles results from both the Gallery and your custom CameraActivity.
+    private val imagePickerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            var foundUri: Uri? = null
+
+            // 1. First, try to get the URI from the standard 'data' field.
+            //    This is how the Gallery (ACTION_GET_CONTENT) returns its result.
+            if (result.data?.data != null) {
+                foundUri = result.data?.data
+            }
+            // 2. If the 'data' field is null, check our custom extra.
+            //    This is how our CameraActivity now returns its result.
+            else {
+                result.data?.getStringExtra("captured_image_uri")?.let { uriString ->
+                    foundUri = Uri.parse(uriString)
+                }
+            }
+
+            // 3. If we found a URI from either source, update the state and the UI.
+            foundUri?.let {
+                imageUri = it
+                imageView.setImageURI(imageUri)
+            }
         }
     }
 
-    private val pickImageLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
-            imageUri = result.data?.data
-            imageView.setImageURI(imageUri)
-        }
+    private fun selectImage() {
+        val options = arrayOf("Take Picture", "Choose from Gallery")
+        AlertDialog.Builder(requireContext())
+            .setTitle("Select Image Source")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> {
+                        // Launch your custom, in-app CameraActivity.
+                        val intent = Intent(requireContext(), CameraActivity::class.java)
+                        imagePickerLauncher.launch(intent)
+                    }
+                    1 -> {
+                        // Launch the standard system gallery picker.
+                        val intent = Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" }
+                        imagePickerLauncher.launch(intent)
+                    }
+                }
+            }
+            .show()
     }
 
     override fun onCreateView(
@@ -123,24 +148,8 @@ class MyBottomStockSheet(
         savedInstanceState: Bundle?
     ): View? {
         val view = inflater.inflate(R.layout.bottom_sheet_stock_layout, container, false)
-
-        initializeViews(view) // Initialize all views first
-
-        // --- Setup for the dynamic unit_of_measure_populates Spinner ---
-        // Initialize the session list with a placeholder item
-        if (dynamicUnitsOfMeasure.isEmpty()) {
-            dynamicUnitsOfMeasure.add(UnitOfMeasureItem("Select a defined unit", 0))
-        }
-
-        // Initialize the adapter for the spinner
-        uomAdapter = ArrayAdapter(
-            requireContext(),
-            R.layout.spinner_item,
-            dynamicUnitsOfMeasure
-        )
-        uomAdapter.setDropDownViewResource(R.layout.spinner_item)
-        unit_of_measure_populates.adapter = uomAdapter
-
+        initializeViews(view)
+        setupUomSpinner()
         setupListeners()
         fetchDynamicData()
         return view
@@ -153,24 +162,17 @@ class MyBottomStockSheet(
         productName = view.findViewById(R.id.productName)
         barcode = view.findViewById(R.id.barcode)
         category = view.findViewById(R.id.category)
-
-        // --- CORRECTED MAPPINGS ---
         qty = view.findViewById(R.id.qty)
         unitCost = view.findViewById(R.id.unitCost)
-
         quantity_display = view.findViewById(R.id.quantity_display)
-
-        unitScrollView = view.findViewById(R.id.mainScroll)
         unitContainer = view.findViewById(R.id.unitContainer)
         btnAddUnit = view.findViewById(R.id.btnAddUnit)
-        locationScrollView = view.findViewById(R.id.mainScroll)
         locationContainer = view.findViewById(R.id.locationContainer)
         location_add = view.findViewById(R.id.location_add)
         locationCounterTextView = view.findViewById(R.id.location_counter)
         unitCounterTextView = view.findViewById(R.id.unit_counter)
         addCategoryCardView = view.findViewById(R.id.add_category)
         unit_of_measure_populates = view.findViewById(R.id.unit_of_measure_populates)
-
         locationCounterTextView.text = "0"
         unitCounterTextView.text = "0"
         progressDialog = ProgressDialog(requireContext()).apply {
@@ -178,24 +180,27 @@ class MyBottomStockSheet(
         }
     }
 
+    private fun setupUomSpinner() {
+        if (dynamicUnitsOfMeasure.isEmpty()) {
+            dynamicUnitsOfMeasure.add(UnitOfMeasureItem("Select a defined unit", 0))
+        }
+        uomAdapter = ArrayAdapter(requireContext(), R.layout.spinner_item, dynamicUnitsOfMeasure)
+        uomAdapter.setDropDownViewResource(R.layout.spinner_item)
+        unit_of_measure_populates.adapter = uomAdapter
+    }
+
     private fun setupListeners() {
+        btnUpload.setOnClickListener { selectImage() }
         btnAddUnit.setOnClickListener { addUnitView() }
         location_add.setOnClickListener { addUnitLocationView() }
-        btnUpload.setOnClickListener { pickImageFromGallery() }
         btnSubmit.setOnClickListener { handleSubmission() }
         category.setOnClickListener { showCategoryDialog() }
-        addCategoryCardView.setOnClickListener {
-            showAddNewCategoryDialog()
-        }
-        // Attach the watcher to the main quantity field.
+        addCategoryCardView.setOnClickListener { showAddNewCategoryDialog() }
         qty.addTextChangedListener(mainCalculationWatcher)
-
-        // Any change in the spinner selection must trigger a recalculation.
         unit_of_measure_populates.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 updateTotalCalculation()
             }
-
             override fun onNothingSelected(parent: AdapterView<*>?) {
                 quantity_display.setText("0")
             }
@@ -213,13 +218,14 @@ class MyBottomStockSheet(
                 val spreadsheetId = findSheetIdByName(getDriveService(account), SPREADSHEET_NAME)
                     ?: throw IllegalStateException("Spreadsheet not found")
 
+                // Fetch Categories
                 val categoryRange = "'$SHEET_CATEGORY'!A2:B"
                 val categoryResponse = sheetsService.spreadsheets().values().get(spreadsheetId, categoryRange).execute()
                 val categoriesFromSheet = categoryResponse.getValues()?.mapNotNull { row ->
                     if (row.size >= 2) SheetItem(id = row[0].toString(), name = row[1].toString()) else null
                 } ?: emptyList()
 
-                // FETCH ALL LOCATION DATA AND BUILD MAPS
+                // Fetch Locations
                 val locationRange = "'$SHEET_LOCATIONS'!A2:D"
                 val locationResponse = sheetsService.spreadsheets().values().get(spreadsheetId, locationRange).execute()
                 val aislesFromSheet = mutableSetOf<String>()
@@ -233,26 +239,32 @@ class MyBottomStockSheet(
                         val aisle = row[1].toString()
                         val rack = row[2].toString()
                         val shelf = row[3].toString()
-
                         if (aisle.isNotBlank()) aislesFromSheet.add(aisle)
                         if (rack.isNotBlank()) racksFromSheet.add(rack)
                         if (shelf.isNotBlank()) shelvesFromSheet.add(shelf)
-
                         tempLocationMap["$aisle-$rack-$shelf".lowercase()] = id
                     }
                 }
 
-                // FETCH ALL OCCUPIED LOCATION IDS
-                val productsLocationRange = "'$SHEET_TAB_NAME'!J2:J"
+                // Fetch occupied location IDs from Products sheet
+                val productsLocationRange = "'$SHEET_TAB_NAME'!I2:I" // Column I for Location_IDs
                 val productsResponse = sheetsService.spreadsheets().values().get(spreadsheetId, productsLocationRange).execute()
                 val usedIds = productsResponse.getValues()?.flatMap { row ->
                     val rawString = row.getOrNull(0)?.toString() ?: "[]"
                     rawString.removeSurrounding("[", "]").replace("'", "").split(",").map { it.trim() }.filter { it.isNotBlank() }
                 } ?: emptyList()
 
+                // Fetch existing barcodes from Products sheet
+                val barcodeRange = "'$SHEET_TAB_NAME'!D2:D" // Column D for Barcode
+                val barcodeResponse = sheetsService.spreadsheets().values().get(spreadsheetId, barcodeRange).execute()
+                val barcodesFromSheet = barcodeResponse.getValues()?.mapNotNull { row ->
+                    row.getOrNull(0)?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+                } ?: emptyList()
+
                 withContext(Dispatchers.Main) {
                     dynamicCategories.clear()
                     dynamicCategories.addAll(categoriesFromSheet)
+
                     dynamicAisles.clear()
                     dynamicAisles.addAll(aislesFromSheet.sorted())
                     dynamicRacks.clear()
@@ -260,17 +272,20 @@ class MyBottomStockSheet(
                     dynamicShelves.clear()
                     dynamicShelves.addAll(shelvesFromSheet.sorted())
 
-                    // POPULATE THE LISTS FOR INSTANT CHECKING
                     locationNameToIdMap.clear()
                     locationNameToIdMap.putAll(tempLocationMap)
+
                     occupiedLocationIds.clear()
                     occupiedLocationIds.addAll(usedIds)
-                    newlySelectedLocationIds.clear() // Clear session list on every fresh load
 
+                    // Populate the barcode set for validation
+                    existingProductBarcodes.clear()
+                    existingProductBarcodes.addAll(barcodesFromSheet)
+
+                    newlySelectedLocationIds.clear()
                     progressDialog.dismiss()
                     Toast.makeText(context, "Ready to add products.", Toast.LENGTH_SHORT).show()
                 }
-
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     progressDialog.dismiss()
@@ -281,30 +296,15 @@ class MyBottomStockSheet(
         }
     }
 
-    /**
-     * Calculates the total based on the SINGLE selected unit of measure
-     * from the spinner. This version is safe against null selections.
-     */
     private fun updateTotalCalculation() {
-        // 1. Get the selected item from the spinner.
         val selectedItem = unit_of_measure_populates.selectedItem as? UnitOfMeasureItem
-
-        // 2. If the selected item is null or it's the placeholder (value 0), the total is 0.
         if (selectedItem == null || selectedItem.value == 0) {
             quantity_display.setText("0")
-            return // Stop execution here.
+            return
         }
-
-        // 3. Get the value from the valid selected item.
         val selectedUnitValue = selectedItem.value.toDouble()
-
-        // 4. Get the main quantity.
         val quantityOfCases = qty.text.toString().toDoubleOrNull() ?: 0.0
-
-        // 5. Perform the calculation.
         val grandTotal = selectedUnitValue * quantityOfCases
-
-        // 6. Update the display.
         quantity_display.setText(String.format("%.0f", grandTotal))
     }
 
@@ -315,6 +315,17 @@ class MyBottomStockSheet(
 
         val pName = productName.text.toString().trim()
         val pBarcode = barcode.text.toString().trim()
+
+        // --- DUPLICATE BARCODE VALIDATION ---
+        if (pBarcode.isNotEmpty() && existingProductBarcodes.contains(pBarcode)) {
+            AlertDialog.Builder(requireContext())
+                .setTitle("Duplicate Barcode")
+                .setMessage("A product with the barcode '$pBarcode' already exists. Please use a different barcode or update the existing product.")
+                .setPositiveButton("OK", null)
+                .show()
+            progressDialog.dismiss()
+            return // Stop the submission
+        }
 
         if (userEmail.isNullOrBlank() || imageUri == null || pName.isEmpty()) {
             Toast.makeText(requireContext(), "Please fill all required fields and select an image.", Toast.LENGTH_SHORT).show()
@@ -327,16 +338,14 @@ class MyBottomStockSheet(
                 val account = GoogleSignIn.getLastSignedInAccount(requireContext())
                     ?: throw Exception("Could not get user account.")
 
-                // ✅ CORRECTED VALIDATION LOGIC
                 var isAnyLocationInvalid = false
                 for (i in 0 until locationContainer.childCount) {
                     val locationView = locationContainer.getChildAt(i)
                     val aisleSpinner = locationView.findViewById<Spinner>(R.id.aisle_spinner)
                     val errorDrawable = ContextCompat.getDrawable(requireContext(), R.drawable.spinner_border_error)
-
-                    // Check if this specific row is invalid
                     if (aisleSpinner.background.constantState == errorDrawable?.constantState) {
                         isAnyLocationInvalid = true
+                        break
                     }
                 }
 
@@ -349,24 +358,23 @@ class MyBottomStockSheet(
                             .show()
                         progressDialog.dismiss()
                     }
-                    return@launch // Stop the submission
+                    return@launch
                 }
-                // ✅ END OF CORRECTION
 
                 val units = getAllUnitsData()
                 val locations = getAllLocationsData()
-
-                // ✅ **FIX**: Use the calculated value from quantity_display for the case quantity.
                 val finalCaseQty = quantity_display.text.toString()
+                val uomDescription = (unit_of_measure_populates.selectedItem as? UnitOfMeasureItem)?.description ?: ""
 
                 progressDialog.setMessage("Uploading product...")
                 uploadImageAndWriteToSheet(
                     account, imageUri!!, SPREADSHEET_NAME, SHEET_TAB_NAME, userEmail,
                     pName, pBarcode, category.text.toString(),
-                    "single",
-                    finalCaseQty, // Pass the corrected quantity here
-                    "single", qty.text.toString(), unitCost.text.toString(),
-                    "null", units, locations
+                    uomDescription,
+                    finalCaseQty,
+                    unitCost.text.toString(),
+                    units,
+                    locations
                 )
 
                 withContext(Dispatchers.Main) {
@@ -392,43 +400,34 @@ class MyBottomStockSheet(
         val inflater = LayoutInflater.from(requireContext())
         val unitView = inflater.inflate(R.layout.unit_of_measure_item, unitContainer, false)
 
-        val unitShelfField = unitView.findViewById<EditText>(R.id.unitShelf) // How many units in case
-        val unitQtyField = unitView.findViewById<EditText>(R.id.unitQty)     // The text part, e.g., "50g"
+        val unitShelfField = unitView.findViewById<EditText>(R.id.unitShelf)
+        val unitQtyField = unitView.findViewById<EditText>(R.id.unitQty)
         val btnRemove = unitView.findViewById<Button>(R.id.btnRemoveUnit)
-
-        // --- Session Focus Listener (With Upsert Logic) ---
         var oldDescription: String? = null
-        unitQtyField.setOnFocusChangeListener { _, hasFocus ->
+        val focusListener = View.OnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
-                // When user clicks INTO the field, store the current description
                 oldDescription = unitQtyField.text.toString().trim()
             } else {
-                // When user clicks OUT of the field, perform the update/insert logic
                 val unitsInCase = unitShelfField.text.toString().toIntOrNull()
                 val newDescription = unitQtyField.text.toString().trim()
 
                 if (unitsInCase != null && newDescription.isNotEmpty()) {
-                    // Remove the old entry if the description text was changed
                     if (!oldDescription.isNullOrEmpty() && oldDescription != newDescription) {
                         dynamicUnitsOfMeasure.removeAll { it.description == oldDescription }
                     }
 
-                    // Find an existing item with the new description
                     val existingItem = dynamicUnitsOfMeasure.find { it.description == newDescription }
                     if (existingItem != null) {
-                        // PROBLEM 1 FIX: Update existing item's value
                         val index = dynamicUnitsOfMeasure.indexOf(existingItem)
                         dynamicUnitsOfMeasure[index] = UnitOfMeasureItem(newDescription, unitsInCase)
                         Toast.makeText(context, "Updated '$newDescription'.", Toast.LENGTH_SHORT).show()
                     } else {
-                        // Insert new item
                         val newUomItem = UnitOfMeasureItem(newDescription, unitsInCase)
                         dynamicUnitsOfMeasure.add(newUomItem)
                         Toast.makeText(context, "Added '$newDescription' to session choices.", Toast.LENGTH_SHORT).show()
                     }
 
                     uomAdapter.notifyDataSetChanged()
-                    // Ensure the spinner selects the item we just added/edited
                     val currentPosition = dynamicUnitsOfMeasure.indexOfFirst { it.description == newDescription }
                     if (currentPosition != -1) {
                         unit_of_measure_populates.setSelection(currentPosition)
@@ -436,30 +435,23 @@ class MyBottomStockSheet(
                 }
             }
         }
-        // Also trigger the "upsert" if the value field is changed
-        unitShelfField.onFocusChangeListener = unitQtyField.onFocusChangeListener
+        unitQtyField.onFocusChangeListener = focusListener
+        unitShelfField.onFocusChangeListener = focusListener
 
-
-        // --- Setup Remove Button (With Crash Fix) ---
         btnRemove.setOnClickListener {
             val descriptionToRemove = unitQtyField.text.toString().trim()
             val currentlySelectedItem = unit_of_measure_populates.selectedItem as? UnitOfMeasureItem
 
-            // 1. Remove the view from the layout.
             unitContainer.removeView(unitView)
             updateUnitCount()
 
-            // 2. If the description is valid, find and remove it from the data source.
             if (descriptionToRemove.isNotEmpty()) {
                 val itemToRemove = dynamicUnitsOfMeasure.find { it.description == descriptionToRemove }
                 if (itemToRemove != null) {
                     val wasCurrentlySelected = currentlySelectedItem?.description == itemToRemove.description
-
                     dynamicUnitsOfMeasure.remove(itemToRemove)
-                    uomAdapter.notifyDataSetChanged() // Update the adapter with the removed item
+                    uomAdapter.notifyDataSetChanged()
 
-                    // PROBLEM 2 FIX: If the item we just removed WAS the selected one,
-                    // manually set the selection to the safe placeholder (position 0).
                     if (wasCurrentlySelected) {
                         unit_of_measure_populates.setSelection(0)
                     }
@@ -467,15 +459,12 @@ class MyBottomStockSheet(
                     Toast.makeText(context, "Removed '$descriptionToRemove' from session choices.", Toast.LENGTH_SHORT).show()
                 }
             }
-            // 4. Finally, trigger a recalculation. This will now run on a valid spinner selection.
             updateTotalCalculation()
         }
 
         unitContainer.addView(unitView)
         updateUnitCount()
     }
-
-
 
     private fun updateUnitCount() {
         unitCounterTextView.text = unitContainer.childCount.toString()
@@ -492,14 +481,12 @@ class MyBottomStockSheet(
         val shelfSpinner = locationView.findViewById<Spinner>(R.id.shelf_spinner)
         val btnRemove = locationView.findViewById<Button>(R.id.btnRemoveUnit)
 
-        // Find the "add" buttons
         val btnAddAisle = locationView.findViewById<CardView>(R.id.aisle_spinner_add)
         val btnAddRack = locationView.findViewById<CardView>(R.id.rack_spinner_add)
         val btnAddShelf = locationView.findViewById<CardView>(R.id.shelf_spinner_add)
 
         var thisRowSelectedId: String? = null
 
-        // --- Adapter setup ---
         val aislesWithPlaceholder = mutableListOf("Select Aisle").apply { addAll(dynamicAisles) }
         val racksWithPlaceholder = mutableListOf("Select Rack").apply { addAll(dynamicRacks) }
         val shelvesWithPlaceholder = mutableListOf("Select Shelf").apply { addAll(dynamicShelves) }
@@ -517,16 +504,9 @@ class MyBottomStockSheet(
         rackSpinner.isEnabled = false
         shelfSpinner.isEnabled = false
 
-        // Set click listeners for the add buttons
-        btnAddAisle.setOnClickListener {
-            showAddItemDialog("Add New Aisle", aisleAdapter, aisleSpinner)
-        }
-        btnAddRack.setOnClickListener {
-            showAddItemDialog("Add New Rack", rackAdapter, rackSpinner)
-        }
-        btnAddShelf.setOnClickListener {
-            showAddItemDialog("Add New Shelf", shelfAdapter, shelfSpinner)
-        }
+        btnAddAisle.setOnClickListener { showAddItemDialog("Add New Aisle", aisleAdapter, aisleSpinner) }
+        btnAddRack.setOnClickListener { showAddItemDialog("Add New Rack", rackAdapter, rackSpinner) }
+        btnAddShelf.setOnClickListener { showAddItemDialog("Add New Shelf", shelfAdapter, shelfSpinner) }
 
         val checkLocationAvailability = {
             aisleSpinner.setBackgroundResource(R.drawable.spinner_border)
@@ -567,7 +547,6 @@ class MyBottomStockSheet(
                 }
                 checkLocationAvailability()
             }
-
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
@@ -582,7 +561,6 @@ class MyBottomStockSheet(
                 }
                 checkLocationAvailability()
             }
-
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
@@ -590,7 +568,6 @@ class MyBottomStockSheet(
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 checkLocationAvailability()
             }
-
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
@@ -779,11 +756,6 @@ class MyBottomStockSheet(
         return locationList
     }
 
-    private fun pickImageFromGallery() {
-        val intent = Intent(Intent.ACTION_PICK, android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-        pickImageLauncher.launch(intent)
-    }
-
     private fun showCategoryDialog() {
         val dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_category_selector, null)
         val searchBox = dialogView.findViewById<EditText>(R.id.searchField)
@@ -829,8 +801,7 @@ class MyBottomStockSheet(
     private suspend fun uploadImageAndWriteToSheet(
         account: GoogleSignInAccount, uri: Uri, spreadsheetName: String, sheetTabName: String, email: String,
         prodName: String, barcode: String, categoryName: String, unit: String,
-        caseQty: String,
-        minOrder: String, qty: String, unitCost: String, unitSelling: String,
+        caseQty: String, unitCost: String,
         units: List<Map<String, String>>, locations: List<Map<String, String>>
     ) {
         withContext(Dispatchers.IO) {
@@ -901,7 +872,7 @@ class MyBottomStockSheet(
                 val locationIdsString = locationIds.joinToString(prefix = "['", postfix = "']", separator = "', '")
                 val productRow = listOf<Any>(
                     productId, prodName, publicUrl, barcode, finalCategoryId, unit,
-                    caseQty, minOrder, unitCost, locationIdsString, email, timestamp
+                    caseQty, unitCost, locationIdsString, email, timestamp
                 )
                 sheetsService.spreadsheets().values()
                     .append(spreadsheetId, "'$SHEET_TAB_NAME'!A1", ValueRange().setValues(listOf(productRow)))
@@ -930,6 +901,14 @@ class MyBottomStockSheet(
                 throw e
             }
         }
+    }
+
+    private fun createTempFileFromUri(uri: Uri): java.io.File {
+        val inputStream: InputStream = requireContext().contentResolver.openInputStream(uri)!!
+        val tempFile = java.io.File.createTempFile("upload_", ".jpg", requireContext().cacheDir)
+        java.io.FileOutputStream(tempFile).use { outputStream -> inputStream.copyTo(outputStream) }
+        inputStream.close()
+        return tempFile
     }
 
     private fun getCurrentTimestamp(): String = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
@@ -977,7 +956,7 @@ class MyBottomStockSheet(
             sheetsService.spreadsheets().batchUpdate(spreadsheetId, batchRequest).execute()
 
             val headers = when (sheetName) {
-                SHEET_TAB_NAME -> listOf("Product_ID", "Product Name", "Images", "Barcode", "Category_ID", "Unit", "Case Quantity", "Minimum Order", "Unit Cost", "Location_IDs", "Updated by", "Timestamp")
+                SHEET_TAB_NAME -> listOf("Product_ID", "Product Name", "Images", "Barcode", "Category_ID", "Unit", "Case Quantity", "Unit Cost", "Location_IDs", "Updated by", "Timestamp")
                 SHEET_LOCATIONS -> listOf("Location_ID", "Aisle", "Rack", "Shelf", "Timestamp", "Updated By")
                 SHEET_UNITS -> listOf("Product_ID", "Barcode", "Selling Price", "Case Units", "Quantity Description", "Cost", "Updated By", "Timestamp")
                 SHEET_CATEGORY -> listOf("Category_ID", "Category Name", "Created By", "Timestamp")
@@ -988,13 +967,5 @@ class MyBottomStockSheet(
                 sheetsService.spreadsheets().values().update(spreadsheetId, "$sheetName!A1", body).setValueInputOption("RAW").execute()
             }
         }
-    }
-
-    private fun createTempFileFromUri(uri: Uri): java.io.File {
-        val inputStream: InputStream = requireContext().contentResolver.openInputStream(uri)!!
-        val tempFile = java.io.File.createTempFile("upload_", ".jpg", requireContext().cacheDir)
-        FileOutputStream(tempFile).use { outputStream -> inputStream.copyTo(outputStream) }
-        inputStream.close()
-        return tempFile
     }
 }
