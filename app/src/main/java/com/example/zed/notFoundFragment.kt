@@ -45,7 +45,7 @@ class notFoundFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         _binding = ActivityStockFragmentBinding.inflate(inflater, container, false)
-        //binding.addProduct.visibility = View.GONE
+        binding.varianceAdd.visibility = View.GONE
         binding.StockListRecyclerView.layoutManager = LinearLayoutManager(requireContext())
         setupClickListeners()
         fetchInventoryData()

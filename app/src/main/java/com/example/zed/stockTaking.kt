@@ -132,7 +132,7 @@ class stockTaking : AppCompatActivity() {
         pageAdapter = MyPageAdapter(this)
         binding.ViewPager.adapter = pageAdapter
 
-        val tabs = listOf("Info", "Inventory", "Not Found")
+        val tabs = listOf("Inventory", "Not Found")
         binding.tabLayout.removeAllTabs()
 
         tabs.forEach { tabName ->

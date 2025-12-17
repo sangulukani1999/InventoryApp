@@ -1,75 +1,83 @@
 package com.example.zed
 
 import android.view.LayoutInflater
-import android.view.View
 import android.view.ViewGroup
-import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
-import com.example.zed.databinding.CommitItemReviewBeforeCommitBinding
+import com.example.zed.databinding.CommitItemReviewBeforeCommitBinding // Make sure this import is correct
+import java.text.DecimalFormat
 
 class CommitReviewAdapter(private val items: List<CommitItem>) :
-    RecyclerView.Adapter<CommitReviewAdapter.CommitViewHolder>() {
+    RecyclerView.Adapter<CommitReviewAdapter.ViewHolder>() {
 
-    // This ViewHolder holds the views for a single item in your list.
-    // It uses the auto-generated binding class for 'commit_item_review_before_commit.xml'.
-    inner class CommitViewHolder(val binding: CommitItemReviewBeforeCommitBinding) :
-        RecyclerView.ViewHolder(binding.root) {
+    // The ViewHolder holds a reference to the binding of the inflated XML layout.
+    inner class ViewHolder(val binding: CommitItemReviewBeforeCommitBinding) : RecyclerView.ViewHolder(binding.root)
 
-        // This function binds the data from a single CommitItem to the views.
-        fun bind(item: CommitItem) {
-            // Set the product name and barcode from the data item
-            binding.productName.text = item.productName
-            binding.barcode.text = item.barcode
-
-            // Display and format the variance
-            binding.variance.text = "Variance: ${item.variance.toInt()}"
-
-            // Load the product image using the Coil library
-            binding.imageView32.load(item.imageUrl) {
-                placeholder(R.drawable.ic_placeholder) // A placeholder image while loading
-                error(R.drawable.ic_error_loading)     // An image to show if loading fails
-            }
-
-            // --- Setup the inner RecyclerView for Location Bubbles ---
-            if (item.locations.isNotEmpty()) {
-                // If the product has locations, make the bubble area visible
-                binding.locationBubble.visibility = View.VISIBLE
-
-                // Create the adapter for the bubbles.
-                // ✅ This is the correct adapter to use for the location bubbles.
-                val bubbleAdapter = NestedCommitedAdapter(
-                    items = item.locations.map { "A${it.aisle} R${it.rack} S${it.shelf}" },
-                    statusList = List(item.locations.size) { true }, // All bubbles are 'active' (blue)
-                    onLocationBubbleClick = {} // No click action is needed on this review screen
-                )
-
-                // Set up the horizontal layout and attach the adapter for the bubbles
-                binding.locationBubble.layoutManager =
-                    LinearLayoutManager(binding.root.context, LinearLayoutManager.HORIZONTAL, false)
-                binding.locationBubble.adapter = bubbleAdapter
-            } else {
-                // If there are no locations for this product, hide the bubble area
-                binding.locationBubble.visibility = View.GONE
-            }
-        }
-    }
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): CommitViewHolder {
-        // Inflates the layout for a single item (commit_item_review_before_commit.xml)
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+        // Inflate the XML layout for a single row using ViewBinding.
         val binding = CommitItemReviewBeforeCommitBinding.inflate(
             LayoutInflater.from(parent.context),
             parent,
             false
         )
-        return CommitViewHolder(binding)
+        return ViewHolder(binding)
     }
 
-    override fun onBindViewHolder(holder: CommitViewHolder, position: Int) {
-        // Gets the data for the current position and calls the bind function to display it
-        holder.bind(items[position])
+    override fun getItemCount(): Int {
+        return items.size
     }
 
-    // Returns the total number of items in the list
-    override fun getItemCount(): Int = items.size
+    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+        // Get the data object for the current row.
+        val item = items[position]
+        val context = holder.itemView.context
+
+        // Use the binding object to access the views in your XML layout.
+        // The names here (e.g., binding.productName) MUST match the IDs in your XML.
+        holder.binding.apply {
+            // --- THIS IS THE FIX ---
+            // Use the correct IDs from your XML file.
+            // ViewBinding converts snake_case (product_name) to camelCase (productName).
+
+            // Set product name using the ID "product_name"
+            productName.text = item.productName
+
+            // Set barcode text using the ID "barcode"
+            barcode.text = item.barcode
+
+            // Load the product image using the ID "imageView32"
+            imageView32.load(item.imageUrl) {
+                placeholder(R.drawable.ic_placeholder) // A placeholder drawable
+                error(R.drawable.ic_placeholder)     // An error drawable
+            }
+
+            // Format and display the variance using the ID "variance"
+            val varianceFormat = DecimalFormat("#,##0.##")
+            val varianceString = "Variance: ${varianceFormat.format(item.variance)}"
+            variance.text = varianceString
+
+            // Set the color of the variance text based on its value
+            when {
+                item.variance > 0 -> {
+                    // Positive variance (over-counted)
+                    variance.setTextColor(context.getColor(R.color.variance_positive)) // e.g., blue or green
+                }
+                item.variance < 0 -> {
+                    // Negative variance (under-counted)
+                    variance.setTextColor(context.getColor(R.color.variance_negative)) // e.g., red
+                }
+                else -> {
+                    // Zero variance
+                    variance.setTextColor(context.getColor(R.color.variance_zero))     // e.g., gray or black
+                }
+            }
+
+            // Note: You also have a RecyclerView with the ID "location_bubble".
+            // If you need to display location bubbles, you would set up its adapter here.
+            // For example:
+            // val locationAdapter = LocationBubbleAdapter(item.locations)
+            // locationBubble.adapter = locationAdapter
+            // locationBubble.layoutManager = LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false)
+        }
+    }
 }
