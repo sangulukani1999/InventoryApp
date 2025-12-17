@@ -26,6 +26,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.material.tabs.TabLayout
+import com.google.android.material.tabs.TabLayoutMediator
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
@@ -57,7 +58,6 @@ class stockTaking : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Correct Order: Initialize binding FIRST to prevent crash.
         binding = ActivityStockTakingBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -70,7 +70,7 @@ class stockTaking : AppCompatActivity() {
         // Call all setup functions
         setupClickListeners()
         setupTabsAndViewPager()
-        setupSearchView() // Setup for live search and suggestions
+        setupSearchView()
 
         // Fetch the product list needed for search suggestions
         fetchProductsForSearch()
@@ -86,36 +86,24 @@ class stockTaking : AppCompatActivity() {
             handleVarianceAddClick()
         }
 
-        // ✅ CRITICAL FIX: The ID must match your layout. Using 'scannerBtn' now.
-        // This was crashing the app because 'barcodeScanner3' does not exist.
         binding.barcodeScanner3.setOnClickListener {
             val scannerDialog = BarcodeScannerDialogFragment { scannedBarcode ->
                 validateBarcodeAndNavigate(scannedBarcode)
             }
             scannerDialog.show(supportFragmentManager, "StockTakingScannerDialog")
         }
-
-
     }
 
-    /**
-     * ✅ ADDED: Signs the user out of Firebase and Google, then returns to the login screen.
-     */
     private fun signOut() {
-        // Show a confirmation dialog first
         AlertDialog.Builder(this)
             .setTitle("Confirm Logout")
             .setMessage("Are you sure you want to log out?")
             .setPositiveButton("Logout") { _, _ ->
-                // Sign out from Firebase
                 Firebase.auth.signOut()
-
-                // Sign out from Google
                 val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).build()
                 val googleSignInClient = GoogleSignIn.getClient(this, gso)
                 googleSignInClient.signOut().addOnCompleteListener {
                     Toast.makeText(this, "Logged out successfully.", Toast.LENGTH_SHORT).show()
-                    // Navigate back to the signup/login activity
                     val intent = Intent(this, signup_dashboard_activity::class.java).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                     }
@@ -127,73 +115,47 @@ class stockTaking : AppCompatActivity() {
             .show()
     }
 
-
     private fun setupTabsAndViewPager() {
+        // 1. Set up the adapter for the ViewPager
         pageAdapter = MyPageAdapter(this)
         binding.ViewPager.adapter = pageAdapter
 
         val tabs = listOf("Inventory", "Not Found")
-        binding.tabLayout.removeAllTabs()
 
-        tabs.forEach { tabName ->
-            val tab = binding.tabLayout.newTab()
+        // 2. Use TabLayoutMediator to link the TabLayout and ViewPager
+        // This is the modern, correct, and simple way to do it.
+        // It handles selecting, swiping, and updating tab text all in one.
+        TabLayoutMediator(binding.tabLayout, binding.ViewPager) { tab, position ->
+            tab.text = tabs[position]
+
+            // Apply custom view styling here if you still need it.
+            // For simplicity, we are using the default text tab style first.
+            // If you use a custom view, you must inflate it and set it for each tab.
             val view = LayoutInflater.from(this).inflate(R.layout.custom_tab_layout, null)
-            view.findViewById<TextView>(R.id.tabText).text = tabName
+            val tabTextView = view.findViewById<TextView>(R.id.tabText)
+            tabTextView.text = tabs[position]
             tab.customView = view
-            binding.tabLayout.addTab(tab)
-        }
 
-        binding.ViewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-            override fun onPageSelected(position: Int) {
-                binding.tabLayout.getTabAt(position)?.select()
-            }
-        })
+        }.attach() // Don't forget to call attach()!
 
-        // RESTORED: Your original, detailed tab styling logic.
+        // 3. Add a listener to apply your custom active/inactive styles
         binding.tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab) {
-                binding.ViewPager.currentItem = tab.position
+                // Update background and margins for the selected tab
                 tab.customView?.let { view ->
                     view.setBackgroundResource(R.drawable.tab_active)
                     val params = view.layoutParams as ViewGroup.MarginLayoutParams
-                    params.topMargin = -35
-                    when (tab.position) {
-                        0 -> {
-                            params.marginStart = dpToPx(binding.tabLayout.context, 0)
-                            params.marginEnd = 0
-                        }
-                        binding.tabLayout.tabCount - 1 -> {
-                            params.marginStart = 0
-                            params.marginEnd = dpToPx(binding.tabLayout.context, 3)
-                        }
-                        else -> {
-                            params.marginStart = 0
-                            params.marginEnd = 0
-                        }
-                    }
+                    params.topMargin = -35 // Move up
                     view.layoutParams = params
                 }
             }
 
             override fun onTabUnselected(tab: TabLayout.Tab) {
+                // Reset background and margins for the unselected tab
                 tab.customView?.let { view ->
-                    view.setBackgroundResource(0)
+                    view.setBackgroundResource(0) // No background
                     val params = view.layoutParams as ViewGroup.MarginLayoutParams
-                    params.topMargin = 0
-                    when (tab.position) {
-                        0 -> {
-                            params.marginStart = dpToPx(binding.tabLayout.context, 20)
-                            params.marginEnd = 0
-                        }
-                        binding.tabLayout.tabCount - 1 -> {
-                            params.marginStart = 0
-                            params.marginEnd = dpToPx(binding.tabLayout.context, 20)
-                        }
-                        else -> {
-                            params.marginStart = 0
-                            params.marginEnd = 0
-                        }
-                    }
+                    params.topMargin = 0 // Reset position
                     view.layoutParams = params
                 }
             }
@@ -201,22 +163,25 @@ class stockTaking : AppCompatActivity() {
             override fun onTabReselected(tab: TabLayout.Tab) {}
         })
 
-        if (binding.tabLayout.tabCount > 0) {
-            binding.tabLayout.getTabAt(0)?.select()
+        // 4. Manually select the first tab to ensure it's active on initial load
+        // This is necessary because the onTabSelected listener isn't always called for the first item.
+        binding.ViewPager.post {
+            binding.tabLayout.getTabAt(0)?.customView?.let { view ->
+                view.setBackgroundResource(R.drawable.tab_active)
+                val params = view.layoutParams as ViewGroup.MarginLayoutParams
+                params.topMargin = -35
+                view.layoutParams = params
+            }
         }
     }
 
-    /**
-     * Sets up the SearchView for both live filtering of fragments and showing clickable suggestions.
-     */
+
     private fun setupSearchView() {
-        // Initialize the suggestion adapter with an empty cursor
         suggestionAdapter = SuggestionAdapter(this, MatrixCursor(arrayOf("_id", "productName", "productBarcode")))
         binding.searchView.suggestionsAdapter = suggestionAdapter
 
         binding.searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean {
-                // When user presses enter, navigate to the details page of the first matching suggestion
                 val firstMatch = allProductsForSearch.firstOrNull { it.name.contains(query ?: "", ignoreCase = true) }
                 if (firstMatch != null) {
                     validateBarcodeAndNavigate(firstMatch.barcode)
@@ -228,13 +193,7 @@ class stockTaking : AppCompatActivity() {
             }
 
             override fun onQueryTextChange(newText: String?): Boolean {
-                // 1. Live filter the currently visible fragment's list
-                val currentFragment = supportFragmentManager.findFragmentByTag("f" + binding.ViewPager.currentItem)
-                if (currentFragment is SearchableFragment) {
-                    currentFragment.filterData(newText)
-                }
-
-                // 2. Update the dropdown suggestions based on the full product list
+                (supportFragmentManager.findFragmentByTag("f" + binding.ViewPager.currentItem) as? SearchableFragment)?.filterData(newText)
                 updateSearchSuggestions(newText)
                 return true
             }
@@ -244,22 +203,19 @@ class stockTaking : AppCompatActivity() {
             override fun onSuggestionSelect(position: Int): Boolean = true
 
             override fun onSuggestionClick(position: Int): Boolean {
-                val cursor = suggestionAdapter.getItem(position) as Cursor
-                val barcodeIndex = cursor.getColumnIndex("productBarcode")
-                if (barcodeIndex != -1) {
-                    val barcode = cursor.getString(barcodeIndex)
-                    validateBarcodeAndNavigate(barcode)
+                (suggestionAdapter.getItem(position) as? Cursor)?.let {
+                    val barcodeIndex = it.getColumnIndex("productBarcode")
+                    if (barcodeIndex != -1) {
+                        validateBarcodeAndNavigate(it.getString(barcodeIndex))
+                    }
                 }
-                binding.searchView.setQuery("", false) // Clear search text
-                binding.searchView.clearFocus() // Hide keyboard
+                binding.searchView.setQuery("", false)
+                binding.searchView.clearFocus()
                 return true
             }
         })
     }
 
-    /**
-     * Fetches the full product list from the "Products" sheet to power search suggestions.
-     */
     private fun fetchProductsForSearch() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
@@ -268,48 +224,41 @@ class stockTaking : AppCompatActivity() {
                 val driveService = getDriveService(account)
                 val spreadsheetId = findSheetIdByName(driveService, "nia-bridge data") ?: return@launch
 
-                val productsRange = "Products!A:D" // Only need ID, Name, Image, Barcode for search
+                val productsRange = "Products!A:D"
                 val productsResponse = sheetsService.spreadsheets().values().get(spreadsheetId, productsRange).execute()
-                val allProductRows = productsResponse.getValues()?.drop(1) ?: emptyList()
-
-                val productList = allProductRows.mapNotNull { row ->
+                val productList = productsResponse.getValues()?.drop(1)?.mapNotNull { row ->
                     if (row.size < 4) null
                     else Product(
                         id = row.getOrNull(0)?.toString() ?: "",
                         name = row.getOrNull(1)?.toString() ?: "",
                         imageUrl = row.getOrNull(2)?.toString() ?: "",
                         barcode = row.getOrNull(3)?.toString() ?: "",
-                        // Other fields are not needed for search suggestions
                         categoryId = "", unit = "", caseQty = "", minOrder = "", unitCost = "", locationIds = emptyList()
                     )
+                } ?: emptyList()
+
+                withContext(Dispatchers.Main) {
+                    allProductsForSearch.clear()
+                    allProductsForSearch.addAll(productList)
+                    Log.d("LiveSearch", "Fetched ${allProductsForSearch.size} products for search suggestions.")
                 }
-                allProductsForSearch.clear()
-                allProductsForSearch.addAll(productList)
-                Log.d("LiveSearch", "Fetched ${allProductsForSearch.size} products for search suggestions.")
             } catch (e: Exception) {
                 Log.e("FetchSearchProducts", "Failed to fetch product list for search", e)
             }
         }
     }
 
-    /**
-     * Filters the `allProductsForSearch` list and updates the suggestion adapter's cursor.
-     */
     private fun updateSearchSuggestions(query: String?) {
         val newCursor = MatrixCursor(arrayOf("_id", "productName", "productBarcode"))
         if (!query.isNullOrBlank()) {
-            val filteredProducts = allProductsForSearch.filter {
+            allProductsForSearch.filter {
                 it.name.contains(query, ignoreCase = true) || it.barcode.contains(query, ignoreCase = true)
-            }.take(5) // Show up to 5 suggestions
-
-            filteredProducts.forEachIndexed { index, product ->
+            }.take(5).forEachIndexed { index, product ->
                 newCursor.addRow(arrayOf(index, product.name, product.barcode))
             }
         }
         suggestionAdapter.changeCursor(newCursor)
     }
-
-    // --- Other Helper Functions (Unchanged) ---
 
     private fun handleVarianceAddClick() {
         val currentUser = Firebase.auth.currentUser
@@ -321,8 +270,8 @@ class stockTaking : AppCompatActivity() {
         checkUserRole(userEmail) { exists, parentEmail ->
             if (exists) {
                 bottom_sheet_commit(userEmail, parentEmail) {
-                    // Optional: Refresh data after adding a new product
-                }.show(supportFragmentManager, "AddProductBottomSheet")
+                    // Refresh data after commit if needed
+                }.show(supportFragmentManager, "CommitBottomSheet")
             } else {
                 Toast.makeText(this, "Access denied. User not found in registry.", Toast.LENGTH_LONG).show()
             }
@@ -334,33 +283,22 @@ class stockTaking : AppCompatActivity() {
             Toast.makeText(this, "Scanned an empty barcode.", Toast.LENGTH_SHORT).show()
             return
         }
-
-        // Since fetchProductsForSearch() runs when the activity starts,
-        // allProductsForSearch should be populated.
-        // We can now check against this list directly.
         val productExists = allProductsForSearch.any { it.barcode.trim() == barcode.trim() }
-
         if (productExists) {
-            // --- PRODUCT FOUND ---
-            // Now that we've confirmed it exists, show the toast and navigate.
             Toast.makeText(this, "Product found. Loading details...", Toast.LENGTH_SHORT).show()
             val intent = Intent(this, InventoryItemDetails::class.java).apply {
                 putExtra("inventoryBarcodes", barcode)
-                // Using CLEAR_TASK is good practice to prevent a long back-stack of detail pages.
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             }
             startActivity(intent)
         } else {
-            // --- PRODUCT NOT FOUND ---
-            // Show an alert dialog here without navigating away.
             AlertDialog.Builder(this)
                 .setTitle("Not Found")
-                .setMessage("Product with barcode '$barcode' was not found in your products list.")
-                .setPositiveButton("OK", null) // 'null' listener just closes the dialog
+                .setMessage("Product with barcode '$barcode' was not found.")
+                .setPositiveButton("OK", null)
                 .show()
         }
     }
-
 
     private fun checkUserRole(email: String, callback: (exists: Boolean, parentEmail: String?) -> Unit) {
         val client = OkHttpClient()
@@ -377,8 +315,10 @@ class stockTaking : AppCompatActivity() {
                         val obj = jsonArray.getJSONObject(i)
                         val mainEmail = obj.optString("email").trim()
                         val subEmail = obj.optString("email sub user").trim()
-                        if (email.equals(mainEmail, ignoreCase = true)) { runOnUiThread { callback(true, null) }; return }
-                        if (subEmail.isNotEmpty() && email.equals(subEmail, ignoreCase = true)) { runOnUiThread { callback(true, mainEmail) }; return }
+                        if (email.equals(mainEmail, ignoreCase = true) || (subEmail.isNotEmpty() && email.equals(subEmail, ignoreCase = true))) {
+                            runOnUiThread { callback(true, if (email.equals(subEmail, ignoreCase = true)) mainEmail else null) }
+                            return
+                        }
                     }
                     runOnUiThread { callback(false, null) }
                 } catch (e: JSONException) {

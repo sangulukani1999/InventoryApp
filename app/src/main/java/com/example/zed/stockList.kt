@@ -13,36 +13,45 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.viewpager2.widget.ViewPager2
+import com.example.zed.databinding.ActivityStockListBinding // Import ViewBinding class
 import com.google.android.material.tabs.TabLayout
+import com.google.android.material.tabs.TabLayoutMediator // Import TabLayoutMediator
 import stockAdapter
 
 class stockList : AppCompatActivity() {
+
+    // Use ViewBinding for safer and cleaner view access
+    private lateinit var binding: ActivityStockListBinding
+
     @SuppressLint("MissingInflatedId")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContentView(R.layout.activity_stock_list)
 
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
+        // --- Use ViewBinding to inflate the layout ---
+        binding = ActivityStockListBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        ViewCompat.setOnApplyWindowInsetsListener(binding.main) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
 
         // Back button
-        val backButton = findViewById<ImageButton>(R.id.backBtnPhysicalInventory)
-        backButton.setOnClickListener {
+        binding.backBtnPhysicalInventory.setOnClickListener {
             startActivity(Intent(this, PhysicalInventory::class.java))
             finish()
         }
 
-        // TabLayout and ViewPager2
-        val tabLayout = findViewById<TabLayout>(R.id.tabLayoutStock)
-        val viewPager = findViewById<ViewPager2>(R.id.tabContent)
+        // --- Correctly set up TabLayout and ViewPager2 ---
+        setupTabs()
+    }
 
+    private fun setupTabs() {
         // Set adapter for ViewPager2
         val adapter = stockAdapter(this)
-        viewPager.adapter = adapter
+        binding.tabContent.adapter = adapter
 
         val tabs = listOf(
             "Products",
@@ -50,75 +59,49 @@ class stockList : AppCompatActivity() {
             "Locations"
         )
 
-        // Add custom tabs
-        for (i in tabs.indices) {
-            val tab = tabLayout.newTab()
-            val view = LayoutInflater.from(this).inflate(R.layout.custom_tab_layout, null)
-            val tabText = view.findViewById<TextView>(R.id.tabText)
-            tabText.text = tabs[i]
-            tab.customView = view
-            tabLayout.addTab(tab)
-        }
+        // ✅ Use TabLayoutMediator to link the TabLayout and ViewPager2
+        TabLayoutMediator(binding.tabLayoutStock, binding.tabContent) { tab, position ->
+            // Inflate your custom view for each tab
+            val customTabView = LayoutInflater.from(this).inflate(R.layout.custom_tab_layout, null)
+            val tabText = customTabView.findViewById<TextView>(R.id.tabText)
+            tabText.text = tabs[position]
+            tab.customView = customTabView
+        }.attach() // This is the most important call! It links everything.
 
-        // Sync ViewPager -> TabLayout
-        viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-            override fun onPageSelected(position: Int) {
-                super.onPageSelected(position)
-                tabLayout.getTabAt(position)?.select()
-            }
-        })
-
-        // Sync TabLayout -> ViewPager
-        tabLayout.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+        // Add the listener for custom styling (like moving the tab up)
+        binding.tabLayoutStock.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab) {
-                viewPager.currentItem = tab.position // <-- important!
                 tab.customView?.let { view ->
                     view.setBackgroundResource(R.drawable.tab_active)
                     val params = view.layoutParams as ViewGroup.MarginLayoutParams
                     params.topMargin = -35
-                    when (tab.position) {
-                        0 -> {
-                            params.marginStart = dpToPx(tabLayout.context, 0)
-                            params.marginEnd = 0
-                        }
-                        tabLayout.tabCount - 1 -> {
-                            params.marginStart = 0
-                            params.marginEnd = dpToPx(tabLayout.context, 3)
-                        }
-                        else -> {
-                            params.marginStart = 0
-                            params.marginEnd = 0
-                        }
-                    }
                     view.layoutParams = params
                 }
             }
 
             override fun onTabUnselected(tab: TabLayout.Tab) {
                 tab.customView?.let { view ->
-                    view.setBackgroundResource(0)
+                    view.setBackgroundResource(0) // Remove background
                     val params = view.layoutParams as ViewGroup.MarginLayoutParams
-                    params.topMargin = 0
-                    when (tab.position) {
-                        0 -> {
-                            params.marginStart = dpToPx(tabLayout.context, 20)
-                            params.marginEnd = 0
-                        }
-                        tabLayout.tabCount - 1 -> {
-                            params.marginStart = 0
-                            params.marginEnd = dpToPx(tabLayout.context, 20)
-                        }
-                        else -> {
-                            params.marginStart = 0
-                            params.marginEnd = 0
-                        }
-                    }
+                    params.topMargin = 0 // Reset margin
                     view.layoutParams = params
                 }
             }
 
             override fun onTabReselected(tab: TabLayout.Tab) {}
         })
+
+        // ✅ THIS IS THE FIX: Manually apply the active style to the first tab.
+        // The .post block ensures this code runs after the layout is fully drawn.
+        binding.tabLayoutStock.post {
+            val firstTab = binding.tabLayoutStock.getTabAt(0)
+            firstTab?.customView?.let { view ->
+                view.setBackgroundResource(R.drawable.tab_active)
+                val params = view.layoutParams as ViewGroup.MarginLayoutParams
+                params.topMargin = -35
+                view.layoutParams = params
+            }
+        }
     }
 
     private fun dpToPx(context: Context, dp: Int): Int {
