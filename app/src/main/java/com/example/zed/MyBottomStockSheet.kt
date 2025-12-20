@@ -72,6 +72,7 @@ class MyBottomStockSheet(
     private lateinit var locationCounterTextView: TextView
     private lateinit var addCategoryCardView: CardView
     private lateinit var unit_of_measure_populates: Spinner
+    private lateinit var barcodeScannerIcon: ImageView
 
     // --- Data Classes & Lists---
     data class SheetItem(val id: String, val name: String) { override fun toString(): String = name }
@@ -148,6 +149,7 @@ class MyBottomStockSheet(
         savedInstanceState: Bundle?
     ): View? {
         val view = inflater.inflate(R.layout.bottom_sheet_stock_layout, container, false)
+
         initializeViews(view)
         setupUomSpinner()
         setupListeners()
@@ -173,11 +175,21 @@ class MyBottomStockSheet(
         unitCounterTextView = view.findViewById(R.id.unit_counter)
         addCategoryCardView = view.findViewById(R.id.add_category)
         unit_of_measure_populates = view.findViewById(R.id.unit_of_measure_populates)
+
         locationCounterTextView.text = "0"
         unitCounterTextView.text = "0"
+        // ✅ ADDED: Set initial placeholder when the view is created
+        imageView.setImageResource(R.drawable.ic_placeholder)
+
         progressDialog = ProgressDialog(requireContext()).apply {
             setCancelable(false)
         }
+
+        barcode = view.findViewById(R.id.barcode)
+
+        // ✅ Initialize the new barcode scanner icon view
+        barcodeScannerIcon = view.findViewById(R.id.barcodeScannerEdit)
+
     }
 
     private fun setupUomSpinner() {
@@ -205,6 +217,18 @@ class MyBottomStockSheet(
                 quantity_display.setText("0")
             }
         }
+
+
+        // ✅ --- ADD THE BARCODE SCANNER LISTENER HERE ---
+        barcodeScannerIcon.setOnClickListener {
+            val scannerDialog = BarcodeScannerDialogFragment { scannedBarcode ->
+                // The action here is to set the text of the barcode EditText
+                barcode.setText(scannedBarcode)
+            }
+            // Use childFragmentManager for fragments within fragments
+            scannerDialog.show(childFragmentManager, "StockSheetScannerDialog")
+        }
+        // --- END OF ADDITION ---
     }
 
     private fun fetchDynamicData() {
@@ -811,24 +835,43 @@ class MyBottomStockSheet(
                 val spreadsheetId = findSheetIdByName(driveService, spreadsheetName)
                     ?: throw Exception("Spreadsheet '$spreadsheetName' not found")
 
+                // Ensure all sheets and the folder exist before proceeding
                 ensureSheetExists(sheetsService, spreadsheetId, SHEET_TAB_NAME)
                 ensureSheetExists(sheetsService, spreadsheetId, SHEET_UNITS)
                 ensureSheetExists(sheetsService, spreadsheetId, SHEET_LOCATIONS)
                 ensureSheetExists(sheetsService, spreadsheetId, SHEET_CATEGORY)
 
                 val folderId = getOrCreateNiaBridgeFolder(driveService)
-                    ?: throw Exception("Folder '$FOLDER_NAME' not found")
+                    ?: throw Exception("Folder '$FOLDER_NAME' could not be found or created")
 
+                // --- Step 1: Upload the file ---
                 val imageFile = createTempFileFromUri(uri)
-                val fileMetadata = File().apply {
-                    name = imageFile.name; mimeType = "image/jpeg"; parents = listOf(folderId)
+                val fileMetadata = com.google.api.services.drive.model.File().apply {
+                    name = imageFile.name
+                    mimeType = "image/jpeg"
+                    parents = listOf(folderId)
                 }
-                val mediaContent = FileContent("image/jpeg", imageFile)
-                val uploadedFile = driveService.files().create(fileMetadata, mediaContent).setFields("id").execute()
-                val publicUrl = "https://drive.google.com/uc?id=${uploadedFile.id}"
+                val mediaContent = com.google.api.client.http.FileContent("image/jpeg", imageFile)
+                val uploadedFile = driveService.files().create(fileMetadata, mediaContent)
+                    .setFields("id") // We only need the ID back from the upload response
+                    .execute()
 
+                val fileId = uploadedFile.id ?: throw Exception("File upload failed, no ID returned.")
+
+                // ✅ --- Step 2: THIS IS THE FIX - Create and apply public read permission ---
+                val publicPermission = com.google.api.services.drive.model.Permission().apply {
+                    type = "anyone"
+                    role = "reader"
+                }
+                // Apply this permission to the file we just uploaded
+                driveService.permissions().create(fileId, publicPermission).execute()
+
+
+                // --- Step 3: Construct the public URL and continue with writing to the sheet ---
+                val publicUrl = "https://drive.google.com/uc?id=$fileId"
                 val timestamp = getCurrentTimestamp()
 
+                // --- Category Handling ---
                 val selectedCategory = withContext(Dispatchers.Main) { category.tag as? SheetItem }
                 val finalCategoryId: String = if (selectedCategory != null) {
                     selectedCategory.id
@@ -843,6 +886,7 @@ class MyBottomStockSheet(
                     ""
                 }
 
+                // --- Location Handling ---
                 val locationIds = mutableListOf<String>()
                 if (locations.isNotEmpty()) {
                     val locationRows = mutableListOf<List<Any>>()
@@ -868,20 +912,23 @@ class MyBottomStockSheet(
                     }
                 }
 
+                // --- Product Creation ---
                 val productId = "PROD-${UUID.randomUUID().toString().take(8).uppercase()}"
-                val locationIdsString = locationIds.joinToString(prefix = "['", postfix = "']", separator = "', '")
+                val locationIdsString = if (locationIds.isNotEmpty()) locationIds.joinToString(prefix = "['", postfix = "']", separator = "', '") else ""
                 val productRow = listOf<Any>(
                     productId, prodName, publicUrl, barcode, finalCategoryId, unit,
-                    caseQty, unitCost, locationIdsString, email, timestamp
+                    caseQty, "", // This seems to be a placeholder, which is fine
+                    unitCost, locationIdsString, email, timestamp
                 )
                 sheetsService.spreadsheets().values()
                     .append(spreadsheetId, "'$SHEET_TAB_NAME'!A1", ValueRange().setValues(listOf(productRow)))
                     .setValueInputOption("USER_ENTERED").execute()
 
+                // --- Units of Measure Creation ---
                 if (units.isNotEmpty()) {
                     val unitRows = units.map { u ->
                         listOf(
-                            u["product_id"] ?: "",
+                            barcode, // CRITICAL FIX: Use the product ID generated above
                             u["barcode"] ?: "",
                             u["price"] ?: "",
                             u["caseType"] ?: "",
@@ -898,10 +945,11 @@ class MyBottomStockSheet(
 
             } catch (e: Exception) {
                 Log.e("GoogleAPI", "Error in uploadImageAndWriteToSheet: ${e.message}", e)
-                throw e
+                throw e // Re-throw to be caught by the calling coroutine
             }
         }
     }
+
 
     private fun createTempFileFromUri(uri: Uri): java.io.File {
         val inputStream: InputStream = requireContext().contentResolver.openInputStream(uri)!!

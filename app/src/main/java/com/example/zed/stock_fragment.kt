@@ -1,7 +1,6 @@
 package com.example.zed
 
 import android.app.ProgressDialog
-import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -9,8 +8,10 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels // ✅ 1. ADD THIS IMPORT
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.viewpager2.widget.ViewPager2
 import com.example.zed.databinding.ActivityStockFragmentBinding
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
@@ -40,12 +41,18 @@ class stock_fragment : Fragment() {
     private var _binding: ActivityStockFragmentBinding? = null
     private val binding get() = _binding!!
 
+    private lateinit var viewPager: ViewPager2
+
+    // ✅ 2. GET THE VIEWMODEL INSTANCE
+    private val sharedViewModel: SharedViewModel by activityViewModels()
+
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
         _binding = ActivityStockFragmentBinding.inflate(inflater, container, false)
-        //binding.addProduct.visibility = View.GONE
+        viewPager = requireActivity().findViewById(R.id.tabContent)
         binding.StockListRecyclerView.layoutManager = LinearLayoutManager(requireContext())
         setupClickListeners()
         fetchInventoryData()
@@ -217,6 +224,10 @@ class stock_fragment : Fragment() {
 
 
                 // --- 5. Prepare data for Adapter WITH FILTERING ---
+                val finalProducts = mutableListOf<Product>()
+                val finalLocations = mutableListOf<List<Location>>()
+                val finalUnits = mutableListOf<List<UnitOfMeasure>>()
+
                 Log.d(logTag, "--- Step 5: Preparing and Filtering Data for Adapter ---")
                 val names = mutableListOf<String>()
                 val prices = mutableListOf<String>()
@@ -265,6 +276,11 @@ class stock_fragment : Fragment() {
                         quantities.add(product.caseQty)
                         productLocationsList.add(locationsForThisProduct)
                         productUnitsList.add(unitsForThisProduct)
+                        // Add to the "source of truth" lists
+                        finalProducts.add(product)
+                        finalLocations.add(locationsForThisProduct)
+                        finalUnits.add(unitsForThisProduct)
+
                     } else {
                         Log.d(logTag, "  -> SKIPPING product '${product.name}' (Variance: $variance, AllLocsCounted: $allLocationsCounted)")
                     }
@@ -280,10 +296,20 @@ class stock_fragment : Fragment() {
                     val adapter = stockListAdaptor(
                         account = account,
                         onItemClick = { position ->
-                            val intent = Intent(requireContext(), InventoryItemDetails::class.java).apply {
-                                putExtra("inventoryBarcodes", barcodes[position])
-                            }
-                            startActivity(intent)
+                            // GET THE FULL DATA FROM YOUR PRE-FETCHED LISTS
+                            val selectedProduct = finalProducts[position]
+                            val selectedLocations = finalLocations[position]
+                            val selectedUnits = finalUnits[position]
+
+                            // Create the wrapper object
+                            val selectedData = SelectedProductData(selectedProduct, selectedLocations, selectedUnits)
+
+                            // ✅ 3. CORRECTED: Call selectProduct on the ViewModel INSTANCE
+                            sharedViewModel.selectProduct(selectedData)
+
+                            Log.d("ItemClick", "Passed full data for ${selectedData.product.name}. Switching tabs.")
+
+                            viewPager.currentItem = 1
                         },
                         onLocationBubbleClick = { location ->
                             Toast.makeText(

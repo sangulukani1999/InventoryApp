@@ -18,7 +18,7 @@
             app:layout_constraintBottom_toTopOf="@+id/imageView7"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/cardView3" />
+            app:layout_constraintTop_toBottomOf="@+id/location_uom" />
 
         <ImageView
             android:id="@+id/imageView7"
@@ -116,7 +116,7 @@
             app:layout_constraintTop_toBottomOf="@+id/barcodeScannerEdit" />
 
         <EditText
-            android:id="@+id/unitSelling"
+            android:id="@+id/unitCost"
             android:layout_width="0dp"
             android:layout_height="24dp"
             android:layout_marginStart="8dp"
@@ -129,27 +129,11 @@
             android:textColor="#0071c1"
             android:textSize="11sp"
             app:layout_constraintEnd_toEndOf="@+id/productName"
-            app:layout_constraintStart_toEndOf="@+id/textView26"
+            app:layout_constraintStart_toEndOf="@+id/textView40"
             app:layout_constraintTop_toBottomOf="@+id/productName" />
 
         <EditText
-            android:id="@+id/unitCost"
-            android:layout_width="0dp"
-            android:layout_height="24dp"
-            android:layout_marginTop="8dp"
-            android:background="@drawable/spinner_border"
-            android:ems="10"
-            android:inputType="text"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:textColor="#0071c1"
-            android:textSize="11sp"
-            app:layout_constraintEnd_toEndOf="@+id/unitSelling"
-            app:layout_constraintStart_toStartOf="@+id/unitSelling"
-            app:layout_constraintTop_toBottomOf="@+id/unitSelling" />
-
-        <EditText
-            android:id="@+id/caseQty"
+            android:id="@+id/units"
             android:layout_width="0dp"
             android:layout_height="24dp"
             android:layout_marginTop="8dp"
@@ -176,9 +160,9 @@
             android:paddingEnd="8dp"
             android:textColor="#0071c1"
             android:textSize="11sp"
-            app:layout_constraintEnd_toEndOf="@+id/caseQty"
-            app:layout_constraintStart_toStartOf="@+id/caseQty"
-            app:layout_constraintTop_toBottomOf="@+id/caseQty" />
+            app:layout_constraintEnd_toEndOf="@+id/units"
+            app:layout_constraintStart_toStartOf="@+id/units"
+            app:layout_constraintTop_toBottomOf="@+id/units" />
 
         <ImageView
             android:id="@+id/barcodeScannerEdit"
@@ -203,17 +187,6 @@
             app:layout_constraintTop_toTopOf="@+id/productName" />
 
         <TextView
-            android:id="@+id/textView26"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Unit Selling"
-            android:textColor="#0071c1"
-            android:textSize="11sp"
-            app:layout_constraintBottom_toBottomOf="@+id/unitSelling"
-            app:layout_constraintStart_toStartOf="@+id/textView24"
-            app:layout_constraintTop_toTopOf="@+id/unitSelling" />
-
-        <TextView
             android:id="@+id/textView40"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -221,7 +194,7 @@
             android:textColor="#0071c1"
             android:textSize="11sp"
             app:layout_constraintBottom_toBottomOf="@+id/unitCost"
-            app:layout_constraintStart_toStartOf="@+id/textView26"
+            app:layout_constraintStart_toStartOf="@+id/textView24"
             app:layout_constraintTop_toTopOf="@+id/unitCost" />
 
         <TextView
@@ -231,9 +204,9 @@
             android:text="Case Qty:"
             android:textColor="#0071c1"
             android:textSize="11sp"
-            app:layout_constraintBottom_toBottomOf="@+id/caseQty"
+            app:layout_constraintBottom_toBottomOf="@+id/units"
             app:layout_constraintStart_toStartOf="@+id/textView40"
-            app:layout_constraintTop_toTopOf="@+id/caseQty" />
+            app:layout_constraintTop_toTopOf="@+id/units" />
 
         <TextView
             android:id="@+id/textView43"
@@ -247,8 +220,8 @@
             app:layout_constraintTop_toTopOf="@+id/minOrder" />
 
         <androidx.cardview.widget.CardView
-            android:id="@+id/cardView3"
-            android:layout_width="80dp"
+            android:id="@+id/location_uom"
+            android:layout_width="130dp"
             android:layout_height="30dp"
             android:layout_marginTop="24dp"
             app:cardBackgroundColor="#0071c1"
@@ -275,7 +248,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginEnd="4dp"
-                    android:text="Location"
+                    android:text="Location and UOM"
                     android:textColor="#fff"
                     android:textSize="11sp"
                     app:layout_constraintBottom_toBottomOf="@+id/imageView21"
