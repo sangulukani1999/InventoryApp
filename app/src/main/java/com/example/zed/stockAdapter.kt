@@ -14,7 +14,7 @@ class stockAdapter(activity: FragmentActivity) : FragmentStateAdapter(activity) 
         return when (position) {
             0 -> stock_fragment()
             1 -> detailsStock()
-            2 -> notFoundFragment()
+            2 -> location_and_uom()
             else -> info()
         }
     }
