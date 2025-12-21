@@ -4,6 +4,7 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.example.zed.detailsStock
 import com.example.zed.info
 import com.example.zed.inventory_fragment
+import com.example.zed.location_and_uom
 import com.example.zed.notFoundFragment
 import com.example.zed.stock_fragment
 
@@ -15,7 +16,7 @@ class stockAdapter(activity: FragmentActivity) : FragmentStateAdapter(activity) 
             0 -> stock_fragment()
             1 -> detailsStock()
             2 -> location_and_uom()
-            else -> info()
+            else -> stock_fragment()
         }
     }
 }
