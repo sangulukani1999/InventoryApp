@@ -5,6 +5,8 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import android.text.Editable // ✅ 1. ADD MISSING IMPORTS
+import android.text.TextWatcher // ✅ 1. ADD MISSING IMPORTS
 import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
@@ -12,7 +14,7 @@ import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
-import androidx.viewpager2.widget.ViewPager2 // ✅ 1. IMPORT ViewPager2
+import androidx.viewpager2.widget.ViewPager2
 import coil.load
 import com.example.zed.databinding.FragmentDetailsStockBinding
 import com.github.mikephil.charting.charts.BarChart
@@ -30,8 +32,10 @@ class detailsStock : Fragment() {
 
     private val sharedViewModel: SharedViewModel by activityViewModels()
 
-    // ✅ 2. DECLARE a variable for the ViewPager
     private lateinit var viewPager: ViewPager2
+
+    // A flag to prevent the TextWatcher from triggering when we programmatically set the text
+    private var isPopulating = false
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -44,19 +48,20 @@ class detailsStock : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // ✅ 3. INITIALIZE the ViewPager from the parent activity
-        viewPager = requireActivity().findViewById(R.id.tabContent) // Assumes this is the ID in your main activity
+        viewPager = requireActivity().findViewById(R.id.tabContent)
 
-        // --- SETUP BARCHART ---
+        // --- SETUP ---
         setupBarChart()
-
-        // --- SETUP LISTENERS ---
         setupListeners()
+        setupDetailListeners() // ✅ 2. CALL THE NEW LISTENER SETUP FUNCTION
 
-        // --- OBSERVE SHARED VIEWMODEL FOR PRODUCT DETAILS ---
+        // --- OBSERVE SHARED VIEWMODEL ---
         sharedViewModel.selectedProductData.observe(viewLifecycleOwner) { data ->
             if (data != null) {
+                // When observing, wrap populateDetails in a flag to prevent infinite loops
+                isPopulating = true
                 populateDetails(data)
+                isPopulating = false
             } else {
                 clearDetails()
             }
@@ -78,6 +83,8 @@ class detailsStock : Fragment() {
             foundUri?.let {
                 imageUri = it
                 binding.stockImage.setImageURI(imageUri)
+                // TODO: You might want to update the ViewModel with the new image URI here as well
+                // sharedViewModel.updateProductImage(it.toString())
             }
         }
     }
@@ -92,15 +99,45 @@ class detailsStock : Fragment() {
             scannerDialog.show(childFragmentManager, "DetailsScannerDialog")
         }
 
-        // ✅ 4. SET the click listener for the location_uom CardView
         binding.locationUom.setOnClickListener {
-            // Switch to the next tab (index 2, for "Locations & UOM")
             viewPager.currentItem = 2
         }
-
-        // You can add the save button listener here as well
-        // binding.btnSaveChanges.setOnClickListener { /* ... */ }
     }
+
+    // ✅ 3. ADD THE NEW FUNCTION
+    /**
+     * Sets up TextWatchers to listen for changes in the EditText fields
+     * and automatically updates the SharedViewModel.
+     */
+    private fun setupDetailListeners() {
+        val textWatcher = object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                // Only update the ViewModel if the change was made by the user, not by the program
+                if (!isPopulating) {
+                    sharedViewModel.updateProductDetails(
+                        newName = binding.productName.text.toString(),
+                        newBarcode = binding.barcode.text.toString(),
+                        newCaseQty = binding.units.text.toString(), // Renamed for clarity
+                        newMinOrder = binding.minOrder.text.toString(),
+                        newUnitCost = binding.unitCost.text.toString()
+                    )
+                }
+            }
+        }
+
+        // Attach the watcher to all relevant EditText fields
+        binding.productName.addTextChangedListener(textWatcher)
+        binding.barcode.addTextChangedListener(textWatcher)
+        binding.units.addTextChangedListener(textWatcher)
+        binding.minOrder.addTextChangedListener(textWatcher)
+        binding.unitCost.addTextChangedListener(textWatcher)
+
+        // Handle category changes separately if it's a spinner/dialog
+        // e.g., categorySpinner.onItemSelectedListener = ... { ... sharedViewModel.updateProductCategory(newCategoryId) }
+    }
+
 
     private fun selectImage() {
         val options = arrayOf("Take Picture", "Choose from Gallery")

@@ -303,7 +303,7 @@
                     </androidx.cardview.widget.CardView>
 
                     <androidx.cardview.widget.CardView
-                        android:id="@+id/update_location_uom"
+                        android:id="@+id/btnSaveChanges"
                         android:layout_width="0dp"
                         android:layout_height="40dp"
                         android:layout_marginTop="16dp"

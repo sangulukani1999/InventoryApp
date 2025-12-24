@@ -32,4 +32,34 @@ class SharedViewModel : ViewModel() {
     fun clearSelection() {
         _selectedProductData.value = null
     }
+
+    // ✅ ADD THIS ENTIRE FUNCTION
+    /**
+     * Updates the details of the currently selected product in the LiveData stream.
+     * This is designed to be called by TextWatchers in the UI fragments.
+     */
+    fun updateProductDetails(
+        newName: String,
+        newBarcode: String,
+        newCaseQty: String,
+        newMinOrder: String,
+        newUnitCost: String
+    ) {
+        // Get the current data from the LiveData, or exit if nothing is selected.
+        val currentData = _selectedProductData.value ?: return
+
+        // Create a new, updated Product object using the .copy() method.
+        // This is important for LiveData to recognize the change.
+        val updatedProduct = currentData.product.copy(
+            name = newName,
+            barcode = newBarcode,
+            caseQty = newCaseQty,
+            minOrder = newMinOrder,
+            unitCost = newUnitCost
+        )
+
+        // Post the new data (with the updated product) back to the LiveData stream.
+        // This will notify all observers of the change.
+        _selectedProductData.value = currentData.copy(product = updatedProduct)
+    }
 }
