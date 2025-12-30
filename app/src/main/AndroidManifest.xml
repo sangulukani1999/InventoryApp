@@ -61,7 +61,10 @@
             android:exported="true" />
         <activity
             android:name=".dashboardActivity"
-            android:exported="true" />
+            android:exported="false" />
+        <activity
+            android:name=".cashTracker"
+            android:exported="false" />
 
         <!-- FILEPROVIDER goes here: Critical for the camera to save photos -->
         <provider

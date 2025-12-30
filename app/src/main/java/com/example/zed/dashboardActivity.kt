@@ -55,6 +55,14 @@ class dashboardActivity : AppCompatActivity() {
             startActivity(Intent(this, stockList::class.java))
         }
 
+        // CardView navigation example
+        val cashTrackerbtn = findViewById<CardView>(R.id.cashTrackerBtn)
+        cashTrackerbtn.setOnClickListener {
+            // Correct: Point the Intent to the actual Activity class for the new screen
+            startActivity(Intent(this, cashTracker::class.java))
+        }
+
+
         // Profile picture and logout
         val profileImage = findViewById<ImageView>(R.id.profileImage)
         val logoutText = findViewById<TextView>(R.id.logoutText)
