@@ -5,8 +5,8 @@ import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
-import android.text.Editable // ✅ 1. ADD MISSING IMPORTS
-import android.text.TextWatcher // ✅ 1. ADD MISSING IMPORTS
+import android.text.Editable
+import android.text.TextWatcher
 import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
@@ -25,7 +25,6 @@ import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
 import com.github.mikephil.charting.components.XAxis
 
 class detailsStock : Fragment() {
-    private var imageUri: Uri? = null
 
     private var _binding: FragmentDetailsStockBinding? = null
     private val binding get() = _binding!!
@@ -53,7 +52,7 @@ class detailsStock : Fragment() {
         // --- SETUP ---
         setupBarChart()
         setupListeners()
-        setupDetailListeners() // ✅ 2. CALL THE NEW LISTENER SETUP FUNCTION
+        setupDetailListeners()
 
         // --- OBSERVE SHARED VIEWMODEL ---
         sharedViewModel.selectedProductData.observe(viewLifecycleOwner) { data ->
@@ -68,26 +67,28 @@ class detailsStock : Fragment() {
         }
     }
 
+    // ✅ --- START: CORRECTED IMAGE LAUNCHER ---
     private val imagePickerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            var foundUri: Uri? = null
+            // This safely gets the URI whether from the camera (as a string extra) or the gallery (as data).
+            val imageUri: Uri? = result.data?.data
+                ?: result.data?.getStringExtra("captured_image_uri")?.let { Uri.parse(it) }
 
-            if (result.data?.data != null) {
-                foundUri = result.data?.data
-            } else {
-                result.data?.getStringExtra("captured_image_uri")?.let { uriString ->
-                    foundUri = Uri.parse(uriString)
+            imageUri?.let { uri ->
+                // 1. Load the new image into the ImageView using Coil for immediate UI feedback.
+                binding.stockImage.load(uri) {
+                    crossfade(true)
+                    placeholder(R.drawable.ic_placeholder)
+                    error(R.drawable.ic_error_loading)
                 }
-            }
 
-            foundUri?.let {
-                imageUri = it
-                binding.stockImage.setImageURI(imageUri)
-                // TODO: You might want to update the ViewModel with the new image URI here as well
-                // sharedViewModel.updateProductImage(it.toString())
+                // 2. Update the ViewModel so the new image path can be saved later.
+                // This now stores a local file URI (e.g., content://...)
+                sharedViewModel.updateProductImage(uri.toString())
             }
         }
     }
+    // ✅ --- END: CORRECTED IMAGE LAUNCHER ---
 
     private fun setupListeners() {
         binding.btnImage.setOnClickListener { selectImage() }
@@ -104,7 +105,6 @@ class detailsStock : Fragment() {
         }
     }
 
-    // ✅ 3. ADD THE NEW FUNCTION
     /**
      * Sets up TextWatchers to listen for changes in the EditText fields
      * and automatically updates the SharedViewModel.
@@ -133,9 +133,6 @@ class detailsStock : Fragment() {
         binding.units.addTextChangedListener(textWatcher)
         binding.minOrder.addTextChangedListener(textWatcher)
         binding.unitCost.addTextChangedListener(textWatcher)
-
-        // Handle category changes separately if it's a spinner/dialog
-        // e.g., categorySpinner.onItemSelectedListener = ... { ... sharedViewModel.updateProductCategory(newCategoryId) }
     }
 
 
@@ -150,7 +147,7 @@ class detailsStock : Fragment() {
                         imagePickerLauncher.launch(intent)
                     }
                     1 -> {
-                        val intent = Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" }
+                        val intent = Intent(Intent.ACTION_PICK).apply { type = "image/*" }
                         imagePickerLauncher.launch(intent)
                     }
                 }
@@ -162,6 +159,7 @@ class detailsStock : Fragment() {
      * Populates the UI fields with data from the SelectedProductData object.
      */
     private fun populateDetails(data: SelectedProductData) {
+        // This will now correctly load from a web URL (https://) or a local file URI (content://)
         binding.stockImage.load(data.product.imageUrl) {
             crossfade(true)
             placeholder(R.drawable.ic_placeholder)
@@ -175,12 +173,7 @@ class detailsStock : Fragment() {
             it.quantityDescription.equals("unit", ignoreCase = true) || it.quantityDescription.equals("single", ignoreCase = true)
         }
 
-        if (singleUnit != null) {
-            binding.unitCost.setText(singleUnit.cost)
-        } else {
-            binding.unitCost.setText(data.product.unitCost)
-        }
-
+        binding.unitCost.setText(singleUnit?.cost ?: data.product.unitCost)
         binding.units.setText(data.product.caseQty)
         binding.minOrder.setText(data.product.minOrder)
     }

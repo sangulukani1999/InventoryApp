@@ -33,7 +33,6 @@ class SharedViewModel : ViewModel() {
         _selectedProductData.value = null
     }
 
-    // ✅ ADD THIS ENTIRE FUNCTION
     /**
      * Updates the details of the currently selected product in the LiveData stream.
      * This is designed to be called by TextWatchers in the UI fragments.
@@ -45,11 +44,7 @@ class SharedViewModel : ViewModel() {
         newMinOrder: String,
         newUnitCost: String
     ) {
-        // Get the current data from the LiveData, or exit if nothing is selected.
         val currentData = _selectedProductData.value ?: return
-
-        // Create a new, updated Product object using the .copy() method.
-        // This is important for LiveData to recognize the change.
         val updatedProduct = currentData.product.copy(
             name = newName,
             barcode = newBarcode,
@@ -57,9 +52,27 @@ class SharedViewModel : ViewModel() {
             minOrder = newMinOrder,
             unitCost = newUnitCost
         )
+        _selectedProductData.value = currentData.copy(product = updatedProduct)
+    }
 
-        // Post the new data (with the updated product) back to the LiveData stream.
-        // This will notify all observers of the change.
+    // ✅ ADD THIS ENTIRE FUNCTION TO FIX THE ERROR
+    /**
+     * Updates just the image URL of the currently selected product.
+     * This is called when a new image is captured or selected in the detailsStock fragment.
+     */
+    fun updateProductImage(newImageUrl: String) {
+        val currentData = _selectedProductData.value ?: return
+
+        // Create an updated product object with the new image URL using .copy()
+        // We also store the old imageUrl in an unused field like 'unit' for later retrieval.
+        // This is a temporary workaround. A better solution would be a dedicated field.
+        val updatedProduct = currentData.product.copy(
+            imageUrl = newImageUrl,
+            // Temporarily store the old URL here for the save process
+            unit = currentData.product.imageUrl ?: ""
+        )
+
+        // Post the new data back to the LiveData stream
         _selectedProductData.value = currentData.copy(product = updatedProduct)
     }
 }

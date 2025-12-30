@@ -1,10 +1,13 @@
+// In location_and_uom.kt
+
 package com.example.zed
 
 import android.app.ProgressDialog
+import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
-import android.util.Log // Keep this import for logging
+import android.util.Log
 import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
@@ -26,6 +29,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport
+import com.google.api.client.http.FileContent
 import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
@@ -36,10 +40,9 @@ import com.example.zed.MyBottomStockSheet.UnitOfMeasureItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.UUID
+import java.util.*
 
 class location_and_uom : Fragment() {
 
@@ -51,7 +54,9 @@ class location_and_uom : Fragment() {
         private const val TAG = "LocationUomFragment"
     }
 
-    // --- All your existing variables ---
+    private val sharedViewModel: SharedViewModel by activityViewModels()
+    private lateinit var progressDialog: ProgressDialog
+
     private lateinit var quantity_display: EditText
     private lateinit var qty: EditText
     private val dynamicAisles = mutableListOf<String>()
@@ -67,23 +72,17 @@ class location_and_uom : Fragment() {
     private lateinit var unitCounterTextView: TextView
     private lateinit var unit_of_measure_populates: Spinner
     private val locationNameToIdMap = mutableMapOf<String, String>()
-
-    // These sets will now be managed correctly
     private val occupiedLocationIds = mutableSetOf<String>()
     private val newlySelectedLocationIds = mutableSetOf<String>()
-
-    private lateinit var progressDialog: ProgressDialog
     private lateinit var btnSaveChanges: CardView
-
-    private val sharedViewModel: SharedViewModel by activityViewModels()
-
     private var pendingProductData: SelectedProductData? = null
     private var isDynamicDataLoaded = false
+
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
-    ): View? {
+    ): View {
         val view = inflater.inflate(R.layout.fragment_location_and_uom, container, false)
         initializeViews(view)
         setupUomSpinner()
@@ -93,6 +92,146 @@ class location_and_uom : Fragment() {
         return view
     }
 
+    private fun handleSaveChanges() {
+        val currentProductData = sharedViewModel.selectedProductData.value ?: run {
+            Toast.makeText(requireContext(), "No product selected to save.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        progressDialog.setMessage("Saving changes...")
+        progressDialog.show()
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val account = GoogleSignIn.getLastSignedInAccount(requireContext())
+                    ?: throw IllegalStateException("User not signed in.")
+                val driveService = getDriveService(account)
+                val sheetsService = getSheetsService(account)
+                val spreadsheetId = findSheetIdByName(driveService, SPREADSHEET_NAME)
+                    ?: throw IllegalStateException("Spreadsheet not found.")
+
+                val productRowIndex = findProductRowIndex(sheetsService, spreadsheetId, currentProductData.product.id)
+                if (productRowIndex == -1) throw IllegalStateException("Could not find the product in the sheet to update.")
+
+                // --- Image Logic: Delete old, Upload new ---
+                var finalImageUrl = currentProductData.product.imageUrl
+                val currentImageUrl = currentProductData.product.imageUrl
+
+                if (currentImageUrl != null && (currentImageUrl.startsWith("content://") || currentImageUrl.startsWith("file://"))) {
+                    withContext(Dispatchers.Main) {
+                        progressDialog.setMessage("Uploading new image...")
+                    }
+                    val newImageUri = Uri.parse(currentImageUrl)
+
+                    val originalData = sharedViewModel.selectedProductData.value
+                    val oldImageDriveUrl = originalData?.product?.unit // Assuming old URL was stashed here
+
+                    if (!oldImageDriveUrl.isNullOrBlank() && oldImageDriveUrl.startsWith("https://")) {
+                        deleteImageFromDrive(driveService, oldImageDriveUrl)
+                    }
+
+                    finalImageUrl = uploadImageToDriveAndGetLink(driveService, newImageUri)
+                }
+
+                // --- Location & UOM Logic ---
+                val newLocations = getNewLocationDataFromUi()
+                val newLocationIds = addNewLocationsToSheet(sheetsService, spreadsheetId, newLocations, account)
+                val finalLocationIds = gatherFinalLocationIdsFromUi(newLocationIds)
+
+                val allCurrentUoms = gatherFinalUomDataFromUi()
+                deleteAllUomsForProduct(sheetsService, spreadsheetId, currentProductData.product.barcode)
+                addNewUnitsToSheet(sheetsService, spreadsheetId, allCurrentUoms, currentProductData.product.barcode, account)
+
+                val mainUom = withContext(Dispatchers.Main) {
+                    (unit_of_measure_populates.selectedItem as? UnitOfMeasureItem)?.description ?: ""
+                }
+                val currentQty = withContext(Dispatchers.Main) { qty.text.toString() }
+
+                val updatedValues = listOf(
+                    currentProductData.product.name,
+                    finalImageUrl ?: "", // Use the new permanent URL
+                    currentProductData.product.barcode,
+                    currentProductData.product.categoryId,
+                    mainUom,
+                    currentQty,
+                    currentProductData.product.minOrder,
+                    currentProductData.product.unitCost,
+                    finalLocationIds.joinToString(prefix = "['", postfix = "']", separator = "', '"),
+                    account.email ?: "Unknown",
+                    getCurrentTimestamp()
+                )
+
+                Log.d(TAG, "Final Update Values: $updatedValues")
+                val valueRange = ValueRange().setValues(listOf(updatedValues))
+                sheetsService.spreadsheets().values()
+                    .update(spreadsheetId, "$SHEET_PRODUCTS!B$productRowIndex", valueRange)
+                    .setValueInputOption("USER_ENTERED")
+                    .execute()
+
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    Toast.makeText(requireContext(), "Product updated successfully!", Toast.LENGTH_LONG).show()
+                }
+
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    Log.e(TAG, "Error during handleSaveChanges", e)
+                    Toast.makeText(requireContext(), "Error saving changes: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private suspend fun uploadImageToDriveAndGetLink(driveService: Drive, imageUri: Uri): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val tempFile = File(requireContext().cacheDir, "upload_${System.currentTimeMillis()}.jpg")
+                requireContext().contentResolver.openInputStream(imageUri)?.use { input ->
+                    tempFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+
+                val fileMetadata = com.google.api.services.drive.model.File().setName(tempFile.name)
+                val mediaContent = FileContent("image/jpeg", tempFile)
+
+                Log.d(TAG, "Uploading new image to Google Drive...")
+                val file = driveService.files().create(fileMetadata, mediaContent)
+                    .setFields("id, webViewLink")
+                    .execute()
+
+                val permission = com.google.api.services.drive.model.Permission()
+                    .setType("anyone")
+                    .setRole("reader")
+                driveService.permissions().create(file.id, permission).execute()
+                Log.d(TAG, "Image uploaded. New Link: ${file.webViewLink}")
+
+                tempFile.delete() // Clean up temporary file
+                return@withContext file.webViewLink
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to upload image", e)
+                return@withContext null
+            }
+        }
+    }
+
+    private suspend fun deleteImageFromDrive(driveService: Drive, fileUrl: String) {
+        withContext(Dispatchers.IO) {
+            try {
+                val fileId = fileUrl.substringAfter("/d/").substringBefore("/")
+                if (fileId.isNotBlank()) {
+                    Log.d(TAG, "Deleting old image from Drive. File ID: $fileId")
+                    driveService.files().delete(fileId).execute()
+                    Log.d(TAG, "Old image deleted successfully.")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to delete old image from Drive. URL: $fileUrl", e)
+            }
+        }
+    }
+
+    //<editor-fold desc="UNCHANGED CODE">
     private fun initializeViews(view: View) {
         locationContainer = view.findViewById(R.id.locationContainer)
         location_add = view.findViewById(R.id.location_add)
@@ -103,7 +242,7 @@ class location_and_uom : Fragment() {
         btnAddUnit = view.findViewById(R.id.btnAddUnit)
         qty = view.findViewById(R.id.qty)
         quantity_display = view.findViewById(R.id.quantity_display)
-        btnSaveChanges = view.findViewById(R.id.btnSaveChanges)
+        btnSaveChanges = view.findViewById(R.id.btnSaveChanges) // Correct ID
 
         locationCounterTextView.text = "0"
         unitCounterTextView.text = "0"
@@ -131,21 +270,18 @@ class location_and_uom : Fragment() {
 
     private fun populateUiWithData(data: SelectedProductData) {
         clearAllViews()
-
         occupiedLocationIds.clear()
         newlySelectedLocationIds.clear()
         occupiedLocationIds.addAll(data.product.locationIds)
-
-        for (unit in data.units) { addUnitView(unit, isNew = false) }
+        // ✅ FIX: Call addUnitView with the correct signature
+        for (unit in data.units) { addUnitView(unit) }
         for (location in data.locations) { addUnitLocationView(location, isNew = false) }
-
         dynamicUnitsOfMeasure.clear()
         val spinnerItems = data.units.mapNotNull {
             it.caseUnits.toIntOrNull()?.let { caseUnits -> UnitOfMeasureItem(it.quantityDescription, caseUnits) }
         }
         dynamicUnitsOfMeasure.addAll(spinnerItems)
         uomAdapter.notifyDataSetChanged()
-
         qty.setText(data.product.caseQty)
         updateTotalCalculation()
     }
@@ -168,7 +304,8 @@ class location_and_uom : Fragment() {
     }
 
     private fun setupListeners() {
-        btnAddUnit.setOnClickListener { addUnitView(null, isNew = true) }
+        // ✅ FIX: Call addUnitView with the correct signature
+        btnAddUnit.setOnClickListener { addUnitView(null) }
         location_add.setOnClickListener { addUnitLocationView(null, isNew = true) }
         qty.addTextChangedListener(mainCalculationWatcher)
         unit_of_measure_populates.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
@@ -196,23 +333,17 @@ class location_and_uom : Fragment() {
         quantity_display.setText(String.format("%.0f", grandTotal))
     }
 
-    private fun addUnitView(unit: UnitOfMeasure?, isNew: Boolean) {
+    private fun addUnitView(unit: UnitOfMeasure?) {
         val inflater = LayoutInflater.from(requireContext())
         val unitView = inflater.inflate(R.layout.unit_of_measure_item, unitContainer, false)
-
-        // ✅ Store the original UOM object in the tag to preserve its data (like sellingPrice)
-        // If it's a new row, the tag will be null initially.
-        unitView.tag = unit
-
+        unitView.tag = unit // Store the original object
         val descriptionField = unitView.findViewById<EditText>(R.id.unitQty)
         val caseUnitsField = unitView.findViewById<EditText>(R.id.unitShelf)
         val btnRemove = unitView.findViewById<Button>(R.id.btnRemoveUnit)
-
         unit?.let {
             descriptionField.setText(it.quantityDescription)
             caseUnitsField.setText(it.caseUnits)
         }
-
         var oldDescription: String? = null
         val focusListener = View.OnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
@@ -240,7 +371,6 @@ class location_and_uom : Fragment() {
         }
         descriptionField.onFocusChangeListener = focusListener
         caseUnitsField.onFocusChangeListener = focusListener
-
         btnRemove.setOnClickListener {
             unitContainer.removeView(unitView)
             updateUnitCount()
@@ -252,7 +382,6 @@ class location_and_uom : Fragment() {
     private fun addUnitLocationView(location: Location?, isNew: Boolean) {
         val locationView = layoutInflater.inflate(R.layout.location_product_item, locationContainer, false)
         if (isNew) locationView.tag = "new"
-
         val aisleSpinner = locationView.findViewById<Spinner>(R.id.aisle_spinner)
         val rackSpinner = locationView.findViewById<Spinner>(R.id.rack_spinner)
         val shelfSpinner = locationView.findViewById<Spinner>(R.id.shelf_spinner)
@@ -261,26 +390,21 @@ class location_and_uom : Fragment() {
         val btnAddRack = locationView.findViewById<CardView>(R.id.rack_spinner_add)
         val btnAddShelf = locationView.findViewById<CardView>(R.id.shelf_spinner_add)
         var thisRowSelectedId: String? = location?.id
-
         thisRowSelectedId?.let { occupiedLocationIds.remove(it) }
-
         val aislesWithPlaceholder = mutableListOf("Select Aisle").apply { addAll(dynamicAisles) }
         val racksWithPlaceholder = mutableListOf("Select Rack").apply { addAll(dynamicRacks) }
         val shelvesWithPlaceholder = mutableListOf("Select Shelf").apply { addAll(dynamicShelves) }
         val aisleAdapter = ArrayAdapter(requireContext(), R.layout.spinner_item, aislesWithPlaceholder)
         val rackAdapter = ArrayAdapter(requireContext(), R.layout.spinner_item, racksWithPlaceholder)
         val shelfAdapter = ArrayAdapter(requireContext(), R.layout.spinner_item, shelvesWithPlaceholder)
-
         aisleAdapter.setDropDownViewResource(R.layout.spinner_item)
         rackAdapter.setDropDownViewResource(R.layout.spinner_item)
         shelfAdapter.setDropDownViewResource(R.layout.spinner_item)
-
         aisleSpinner.adapter = aisleAdapter
         rackSpinner.adapter = ArrayAdapter(requireContext(), R.layout.spinner_item, listOf("Select Aisle First"))
         shelfSpinner.adapter = ArrayAdapter(requireContext(), R.layout.spinner_item, listOf("Select Rack First"))
         rackSpinner.isEnabled = false
         shelfSpinner.isEnabled = false
-
         fun updateRackSpinner(selectedAislePosition: Int) {
             if (selectedAislePosition > 0) {
                 rackSpinner.isEnabled = true
@@ -292,7 +416,6 @@ class location_and_uom : Fragment() {
                 shelfSpinner.adapter = ArrayAdapter(requireContext(), R.layout.spinner_item, listOf("Select Rack First"))
             }
         }
-
         fun updateShelfSpinner(selectedRackPosition: Int) {
             if (selectedRackPosition > 0) {
                 shelfSpinner.isEnabled = true
@@ -302,7 +425,6 @@ class location_and_uom : Fragment() {
                 shelfSpinner.adapter = ArrayAdapter(requireContext(), R.layout.spinner_item, listOf("Select Rack First"))
             }
         }
-
         location?.let {
             val aislePos = aislesWithPlaceholder.indexOf(it.aisle)
             if (aislePos > 0) {
@@ -319,26 +441,21 @@ class location_and_uom : Fragment() {
                 }
             }
         }
-
         btnAddAisle.setOnClickListener { showAddItemDialog("Add New Aisle", aisleAdapter, aisleSpinner) }
         btnAddRack.setOnClickListener { showAddItemDialog("Add New Rack", rackAdapter, rackSpinner) }
         btnAddShelf.setOnClickListener { showAddItemDialog("Add New Shelf", shelfAdapter, shelfSpinner) }
-
         val checkLocationAvailability = {
             aisleSpinner.setBackgroundResource(R.drawable.spinner_border)
             rackSpinner.setBackgroundResource(if (rackSpinner.isEnabled) R.drawable.spinner_border else R.drawable.spinner_border_disabled)
             shelfSpinner.setBackgroundResource(if (shelfSpinner.isEnabled) R.drawable.spinner_border else R.drawable.spinner_border_disabled)
-
             thisRowSelectedId?.let { newlySelectedLocationIds.remove(it) }
             thisRowSelectedId = null
-
             if (aisleSpinner.selectedItemPosition > 0 && rackSpinner.selectedItemPosition > 0 && shelfSpinner.selectedItemPosition > 0) {
                 val aisle = aisleSpinner.selectedItem.toString()
                 val rack = rackSpinner.selectedItem.toString()
                 val shelf = shelfSpinner.selectedItem.toString()
                 val locationKey = "$aisle-$rack-$shelf".lowercase()
                 val selectedLocationId = locationNameToIdMap[locationKey]
-
                 if (selectedLocationId != null && (occupiedLocationIds.contains(selectedLocationId) || newlySelectedLocationIds.contains(selectedLocationId))) {
                     aisleSpinner.setBackgroundResource(R.drawable.spinner_border_error)
                     rackSpinner.setBackgroundResource(R.drawable.spinner_border_error)
@@ -349,7 +466,6 @@ class location_and_uom : Fragment() {
                 }
             }
         }
-
         aisleSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 updateRackSpinner(position)
@@ -381,95 +497,17 @@ class location_and_uom : Fragment() {
         locationContainer.addView(locationView)
         updateLocationCount()
     }
-
-    private fun updateUnitCount() {
-        unitCounterTextView.text = unitContainer.childCount.toString()
-    }
-
-    private fun updateLocationCount() {
-        locationCounterTextView.text = locationContainer.childCount.toString()
-    }
-
-    // --- START OF SAVE LOGIC ---
-    private fun handleSaveChanges() {
-        val currentProductData = sharedViewModel.selectedProductData.value ?: run {
-            Toast.makeText(requireContext(), "No product selected to save.", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        progressDialog.setMessage("Saving changes...")
-        progressDialog.show()
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val account = GoogleSignIn.getLastSignedInAccount(requireContext())
-                    ?: throw IllegalStateException("User not signed in.")
-                val sheetsService = getSheetsService(account)
-                val spreadsheetId = findSheetIdByName(getDriveService(account), SPREADSHEET_NAME)
-                    ?: throw IllegalStateException("Spreadsheet not found.")
-
-                val productRowIndex = findProductRowIndex(sheetsService, spreadsheetId, currentProductData.product.id)
-                if (productRowIndex == -1) throw IllegalStateException("Could not find the product in the sheet to update.")
-
-                // --- Location Logic ---
-                val newLocations = getNewLocationDataFromUi()
-                val newLocationIds = addNewLocationsToSheet(sheetsService, spreadsheetId, newLocations, account)
-                val finalLocationIds = gatherFinalLocationIdsFromUi(newLocationIds)
-
-                // --- UOM Logic (Delete then Re-add) ---
-                val allCurrentUoms = gatherFinalUomDataFromUi()
-                deleteAllUomsForProduct(sheetsService, spreadsheetId, currentProductData.product.barcode)
-                addNewUnitsToSheet(sheetsService, spreadsheetId, allCurrentUoms, currentProductData.product.barcode, account)
-                // --- End UOM Logic ---
-
-                val mainUom = (unit_of_measure_populates.selectedItem as? UnitOfMeasureItem)?.description ?: ""
-                val updatedValues = listOf(
-                    currentProductData.product.name,
-                    currentProductData.product.imageUrl,
-                    currentProductData.product.barcode,
-                    currentProductData.product.categoryId,
-                    mainUom,
-                    qty.text.toString(),
-                    currentProductData.product.minOrder,
-                    currentProductData.product.unitCost,
-                    finalLocationIds.joinToString(prefix = "['", postfix = "']", separator = "', '"),
-                    account.email ?: "Unknown",
-                    getCurrentTimestamp()
-                )
-
-                Log.d(TAG, "Updating product row $productRowIndex with values: $updatedValues")
-
-                val valueRange = ValueRange().setValues(listOf(updatedValues))
-                sheetsService.spreadsheets().values()
-                    .update(spreadsheetId, "$SHEET_PRODUCTS!B$productRowIndex", valueRange)
-                    .setValueInputOption("USER_ENTERED")
-                    .execute()
-
-                withContext(Dispatchers.Main) {
-                    progressDialog.dismiss()
-                    Toast.makeText(requireContext(), "Product updated successfully!", Toast.LENGTH_LONG).show()
-                }
-
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    progressDialog.dismiss()
-                    Log.e(TAG, "Error updating product", e)
-                    Toast.makeText(requireContext(), "Error saving changes: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
-
+    private fun updateUnitCount() { unitCounterTextView.text = unitContainer.childCount.toString() }
+    private fun updateLocationCount() { locationCounterTextView.text = locationContainer.childCount.toString() }
     private suspend fun gatherFinalLocationIdsFromUi(newLocationIds: List<String>): List<String> {
         val finalLocationIds = mutableListOf<String>()
-        withContext(Dispatchers.Main) { // Must read UI on Main thread
+        withContext(Dispatchers.Main) {
             Log.d(TAG, "Reading final locations from UI...")
             for (i in 0 until locationContainer.childCount) {
                 val view = locationContainer.getChildAt(i)
                 val aisleSpinner = view.findViewById<Spinner>(R.id.aisle_spinner)
                 val rackSpinner = view.findViewById<Spinner>(R.id.rack_spinner)
                 val shelfSpinner = view.findViewById<Spinner>(R.id.shelf_spinner)
-
                 if (aisleSpinner.selectedItemPosition > 0 && rackSpinner.selectedItemPosition > 0 && shelfSpinner.selectedItemPosition > 0) {
                     val aisle = aisleSpinner.selectedItem.toString()
                     val rack = rackSpinner.selectedItem.toString()
@@ -487,23 +525,18 @@ class location_and_uom : Fragment() {
         Log.d(TAG, "Final list of location IDs to be saved: $distinctFinalIds")
         return distinctFinalIds
     }
-
-    // ✅ FIXED: Gathers ALL UOMs from the UI, preserving existing data
     private suspend fun gatherFinalUomDataFromUi(): List<Map<String, String>> {
         val allUnits = mutableListOf<Map<String, String>>()
-        withContext(Dispatchers.Main) { // Must read UI on Main thread
+        withContext(Dispatchers.Main) {
             Log.d(TAG, "Starting to gather ALL Unit of Measure data from UI...")
             for (i in 0 until unitContainer.childCount) {
                 val view = unitContainer.getChildAt(i)
-                val originalUnit = view.tag as? UnitOfMeasure // Get the original data from the tag
-
+                val originalUnit = view.tag as? UnitOfMeasure
                 val descriptionField = view.findViewById<EditText>(R.id.unitQty)
                 val caseUnitsField = view.findViewById<EditText>(R.id.unitShelf)
                 val desc = descriptionField.text.toString().trim()
                 val caseUnits = caseUnitsField.text.toString().trim()
-
                 if (desc.isNotEmpty() && caseUnits.isNotEmpty()) {
-                    // Start with original data, then overwrite with edited fields
                     val unitMap = mutableMapOf(
                         "description" to desc,
                         "caseUnits" to caseUnits,
@@ -518,36 +551,25 @@ class location_and_uom : Fragment() {
                 }
             }
         }
-        if (allUnits.isEmpty()) {
-            Log.d(TAG, "No valid UOMs were found in the UI to save.")
-        }
+        if (allUnits.isEmpty()) { Log.d(TAG, "No valid UOMs were found in the UI to save.") }
         return allUnits
     }
-
-
     private fun getNewLocationDataFromUi(): List<Map<String, String>> {
         val newLocations = mutableListOf<Map<String, String>>()
-        // This function now only handles BRAND NEW locations that need to be added to the location sheet
         for (i in 0 until locationContainer.childCount) {
             val view = locationContainer.getChildAt(i)
             if (view.tag == "new") {
                 val aisleSpinner = view.findViewById<Spinner>(R.id.aisle_spinner)
                 val rackSpinner = view.findViewById<Spinner>(R.id.rack_spinner)
                 val shelfSpinner = view.findViewById<Spinner>(R.id.shelf_spinner)
-
                 if (aisleSpinner.selectedItemPosition > 0 && rackSpinner.selectedItemPosition > 0 && shelfSpinner.selectedItemPosition > 0) {
-                    val locationMap = mapOf(
-                        "Aisle" to aisleSpinner.selectedItem.toString(),
-                        "Rack" to rackSpinner.selectedItem.toString(),
-                        "Shelf" to shelfSpinner.selectedItem.toString()
-                    )
+                    val locationMap = mapOf("Aisle" to aisleSpinner.selectedItem.toString(), "Rack" to rackSpinner.selectedItem.toString(), "Shelf" to shelfSpinner.selectedItem.toString())
                     newLocations.add(locationMap)
                 }
             }
         }
         return newLocations
     }
-
     private suspend fun addNewLocationsToSheet(sheetsService: Sheets, spreadsheetId: String, locations: List<Map<String, String>>, account: GoogleSignInAccount): List<String> {
         if (locations.isEmpty()) {
             Log.d(TAG, "addNewLocationsToSheet: No new locations to add. Skipping append.")
@@ -557,55 +579,32 @@ class location_and_uom : Fragment() {
         val locationRows = mutableListOf<List<Any>>()
         val timestamp = getCurrentTimestamp()
         val user = account.email ?: "Unknown"
-
         locations.forEach { loc ->
             val newId = "LOC-${UUID.randomUUID().toString().take(8).uppercase()}"
             newLocationIds.add(newId)
             locationRows.add(listOf(newId, loc["Aisle"]!!, loc["Rack"]!!, loc["Shelf"]!!, timestamp, user))
         }
-
         Log.d(TAG, "Appending ${locationRows.size} new rows to '$SHEET_LOCATIONS' sheet: $locationRows")
         val body = ValueRange().setValues(locationRows)
-        sheetsService.spreadsheets().values()
-            .append(spreadsheetId, "$SHEET_LOCATIONS!A1", body)
-            .setValueInputOption("USER_ENTERED")
-            .execute()
+        sheetsService.spreadsheets().values().append(spreadsheetId, "$SHEET_LOCATIONS!A1", body).setValueInputOption("USER_ENTERED").execute()
         return newLocationIds
     }
-
-    // ✅ FIXED: Deletes all UOM rows for a specific product barcode
     private suspend fun deleteAllUomsForProduct(sheetsService: Sheets, spreadsheetId: String, productBarcode: String) {
         Log.d(TAG, "Attempting to delete all existing UOMs for barcode: $productBarcode")
-        val sheetId = getSheetId(sheetsService, spreadsheetId, SHEET_UNITS)
-            ?: throw IllegalStateException("Could not find sheet ID for '$SHEET_UNITS'")
-
-        // 1. Find all rows that match the barcode
-        val range = "$SHEET_UNITS!A:A" // Assuming product barcode is in column A
+        val sheetId = getSheetId(sheetsService, spreadsheetId, SHEET_UNITS) ?: throw IllegalStateException("Could not find sheet ID for '$SHEET_UNITS'")
+        val range = "$SHEET_UNITS!A:A"
         val response = sheetsService.spreadsheets().values().get(spreadsheetId, range).execute()
-        val values = response.getValues() ?: return // No UOMs exist, nothing to delete
-
+        val values = response.getValues() ?: return
         val deleteRequests = mutableListOf<Request>()
-        // Iterate in reverse to avoid shifting indices
         for (i in values.indices.reversed()) {
             val row = values[i]
             if (row.isNotEmpty() && row[0].toString().trim() == productBarcode.trim()) {
                 val rowIndex = i
-                val deleteRequest = Request().setDeleteDimension(
-                    DeleteDimensionRequest()
-                        .setRange(
-                            DimensionRange()
-                                .setSheetId(sheetId)
-                                .setDimension("ROWS")
-                                .setStartIndex(rowIndex)
-                                .setEndIndex(rowIndex + 1)
-                        )
-                )
+                val deleteRequest = Request().setDeleteDimension(DeleteDimensionRequest().setRange(DimensionRange().setSheetId(sheetId).setDimension("ROWS").setStartIndex(rowIndex).setEndIndex(rowIndex + 1)))
                 deleteRequests.add(deleteRequest)
                 Log.d(TAG, "Prepared to delete UOM row at index: $rowIndex for barcode $productBarcode")
             }
         }
-
-        // 2. Batch delete all found rows
         if (deleteRequests.isNotEmpty()) {
             Log.d(TAG, "Executing batch delete for ${deleteRequests.size} UOM rows.")
             val batchUpdateRequest = BatchUpdateSpreadsheetRequest().setRequests(deleteRequests)
@@ -614,47 +613,27 @@ class location_and_uom : Fragment() {
             Log.d(TAG, "No existing UOMs found for barcode $productBarcode to delete.")
         }
     }
-
-
     private suspend fun addNewUnitsToSheet(sheetsService: Sheets, spreadsheetId: String, units: List<Map<String, String>>, mainBarcode: String, account: GoogleSignInAccount) {
         if (units.isEmpty()) {
             Log.d(TAG, "addNewUnitsToSheet: No new units to add. Skipping append.")
             return
         }
-        val unitRows = units.map { u ->
-            listOf(
-                mainBarcode,
-                u["barcode"] ?: mainBarcode,
-                u["sellingPrice"] ?: "",
-                u["caseUnits"] ?: "",
-                u["description"] ?: "",
-                u["cost"] ?: "",
-                account.email ?: "Unknown",
-                getCurrentTimestamp()
-            )
-        }
-
+        val unitRows = units.map { u -> listOf(mainBarcode, u["barcode"] ?: mainBarcode, u["sellingPrice"] ?: "", u["caseUnits"] ?: "", u["description"] ?: "", u["cost"] ?: "", account.email ?: "Unknown", getCurrentTimestamp()) }
         Log.d(TAG, "Appending ${unitRows.size} new rows to '$SHEET_UNITS' sheet: $unitRows")
         val body = ValueRange().setValues(unitRows)
-        sheetsService.spreadsheets().values()
-            .append(spreadsheetId, "$SHEET_UNITS!A1", body)
-            .setValueInputOption("USER_ENTERED")
-            .execute()
+        sheetsService.spreadsheets().values().append(spreadsheetId, "$SHEET_UNITS!A1", body).setValueInputOption("USER_ENTERED").execute()
     }
-
     private suspend fun findProductRowIndex(sheetsService: Sheets, spreadsheetId: String, productId: String): Int {
         val range = "$SHEET_PRODUCTS!A:A"
         val response = sheetsService.spreadsheets().values().get(spreadsheetId, range).execute()
         val values = response.getValues() ?: return -1
-        for ((index, row) in values.drop(1).withIndex()) { // drop(1) to skip header
+        for ((index, row) in values.drop(1).withIndex()) {
             if (row.isNotEmpty() && row[0].toString() == productId) {
-                return index + 2 // +1 for 1-based index, +1 for dropped header
+                return index + 2
             }
         }
         return -1
     }
-
-    // ✅ FIXED: Helper to get the numeric ID of a sheet by its name
     private suspend fun getSheetId(sheetsService: Sheets, spreadsheetId: String, sheetName: String): Int? {
         return withContext(Dispatchers.IO) {
             try {
@@ -666,27 +645,21 @@ class location_and_uom : Fragment() {
             }
         }
     }
-
-
     private fun fetchDynamicData() {
         progressDialog.setMessage("Loading available locations...")
         progressDialog.show()
         isDynamicDataLoaded = false
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val account = GoogleSignIn.getLastSignedInAccount(requireContext())
-                    ?: throw IllegalStateException("User not signed in")
+                val account = GoogleSignIn.getLastSignedInAccount(requireContext()) ?: throw IllegalStateException("User not signed in")
                 val sheetsService = getSheetsService(account)
-                val spreadsheetId = findSheetIdByName(getDriveService(account), SPREADSHEET_NAME)
-                    ?: throw IllegalStateException("Spreadsheet not found")
-
+                val spreadsheetId = findSheetIdByName(getDriveService(account), SPREADSHEET_NAME) ?: throw IllegalStateException("Spreadsheet not found")
                 val locationRange = "'$SHEET_LOCATIONS'!A2:D"
                 val locationResponse = sheetsService.spreadsheets().values().get(spreadsheetId, locationRange).execute()
                 val aislesFromSheet = mutableSetOf<String>()
                 val racksFromSheet = mutableSetOf<String>()
                 val shelvesFromSheet = mutableSetOf<String>()
                 val tempLocationMap = mutableMapOf<String, String>()
-
                 locationResponse.getValues()?.forEach { row ->
                     if (row.size >= 4) {
                         val id = row[0].toString()
@@ -699,7 +672,6 @@ class location_and_uom : Fragment() {
                         tempLocationMap["$aisle-$rack-$shelf".lowercase()] = id
                     }
                 }
-
                 withContext(Dispatchers.Main) {
                     dynamicAisles.clear(); dynamicAisles.addAll(aislesFromSheet.sorted())
                     dynamicRacks.clear(); dynamicRacks.addAll(racksFromSheet.sorted())
@@ -718,7 +690,6 @@ class location_and_uom : Fragment() {
             }
         }
     }
-
     private fun showAddItemDialog(title: String, adapter: ArrayAdapter<String>, spinner: Spinner?) {
         val input = EditText(requireContext()).apply { hint = "Enter new value" }
         val container = FrameLayout(requireContext())
@@ -728,18 +699,10 @@ class location_and_uom : Fragment() {
         }
         input.layoutParams = params
         container.addView(input)
-
-        val dialog = AlertDialog.Builder(requireContext())
-            .setTitle(title)
-            .setView(container)
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Add", null)
-            .create()
-
+        val dialog = AlertDialog.Builder(requireContext()).setTitle(title).setView(container).setNegativeButton("Cancel", null).setPositiveButton("Add", null).create()
         dialog.show()
         val positiveButton = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
         positiveButton.isEnabled = false
-
         input.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
@@ -748,7 +711,6 @@ class location_and_uom : Fragment() {
                 positiveButton.isEnabled = inputText.isNotEmpty()
             }
         })
-
         positiveButton.setOnClickListener {
             val newItemName = input.text.toString().trim()
             if (!adapter.isEmpty && adapter.getPosition(newItemName) >= 0) {
@@ -763,28 +725,24 @@ class location_and_uom : Fragment() {
             dialog.dismiss()
         }
     }
-
-    // --- Google API Helper Functions ---
     private fun getCurrentTimestamp(): String = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-
     private fun getSheetsService(account: GoogleSignInAccount): Sheets {
-        val credential = GoogleAccountCredential.usingOAuth2(requireContext(), listOf(SheetsScopes.SPREADSHEETS))
+        val credential = GoogleAccountCredential.usingOAuth2(requireContext(), listOf(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE_FILE))
             .apply { selectedAccountName = account.email }
         return Sheets.Builder(GoogleNetHttpTransport.newTrustedTransport(), GsonFactory.getDefaultInstance(), credential)
             .setApplicationName("Nia Bridge App").build()
     }
-
     private fun getDriveService(account: GoogleSignInAccount): Drive {
-        val credential = GoogleAccountCredential.usingOAuth2(requireContext(), listOf(DriveScopes.DRIVE))
+        val credential = GoogleAccountCredential.usingOAuth2(requireContext(), listOf(DriveScopes.DRIVE, DriveScopes.DRIVE_FILE))
             .apply { selectedAccountName = account.email }
         return Drive.Builder(GoogleNetHttpTransport.newTrustedTransport(), GsonFactory.getDefaultInstance(), credential)
             .setApplicationName("Nia Bridge App").build()
     }
-
     private suspend fun findSheetIdByName(driveService: Drive, name: String): String? = withContext(Dispatchers.IO) {
         val query = "name='$name' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"
         val result = driveService.files().list().setQ(query).setSpaces("drive").setCorpus("user")
             .setFields("files(id, owners, shared)").execute()
         result.files.firstOrNull { file -> (file.owners?.any { it.me == true } == true) || (file.shared == true) }?.id
     }
+    //</editor-fold>
 }
