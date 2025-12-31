@@ -7,5 +7,8 @@ data class Expense(
     val quantity: Double = 0.0,
     val amount: Double = 0.0,
     val permit: Boolean = false,
-    val user: String = "" // Email of the user who added it
+    val user: String = "", // Email of the user who added it
+    val timestamp: String,
+    val approvalTimestamp: String
+
 )
