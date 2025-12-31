@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginBottom="16dp"
+        android:text="Add Expense Details"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <EditText
+        android:id="@+id/edit_text_expense_item"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Expense Item (e.g., Fuel)"
+        android:inputType="textCapWords" />
+
+    <EditText
+        android:id="@+id/edit_text_expense_description"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="Description (optional)"
+        android:inputType="textCapSentences" />
+
+    <EditText
+        android:id="@+id/edit_text_expense_qty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="Quantity"
+        android:inputType="numberDecimal" />
+
+    <EditText
+        android:id="@+id/edit_text_expense_amount"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="Total Amount"
+        android:inputType="numberDecimal" />
+
+    <RadioGroup
+        android:id="@+id/radio_group_permit"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Permit:"
+            android:layout_marginEnd="8dp"/>
+
+        <RadioButton
+            android:id="@+id/radio_true"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="True" />
+
+        <RadioButton
+            android:id="@+id/radio_false"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="False" />
+    </RadioGroup>
+
+</LinearLayout>
