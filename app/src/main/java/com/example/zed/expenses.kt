@@ -74,6 +74,7 @@ class expenses : Fragment() {
         checkUserRole(currentUserEmail) { isAdminResult, _, _ ->
             this.isAdmin = isAdminResult
             Log.d("ExpensesFragment", "Role check complete. User is admin: $isAdmin")
+            // Re-setup the adapter with the correct admin status before fetching
             setupRecyclerView()
             fetchExpensesFromSheet()
         }
@@ -95,12 +96,9 @@ class expenses : Fragment() {
         }
     }
 
-    // In expenses.kt
-
     private fun showAddExpenseDialog() {
         val dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.expenses_entry_dialog, null)
 
-        // ... (finding other views)
         val itemEt: EditText = dialogView.findViewById(R.id.edit_text_expense_item)
         val descEt: EditText = dialogView.findViewById(R.id.edit_text_expense_description)
         val qtyEt: EditText = dialogView.findViewById(R.id.edit_text_expense_qty)
@@ -119,16 +117,11 @@ class expenses : Fragment() {
         AlertDialog.Builder(requireContext())
             .setView(dialogView)
             .setPositiveButton("Add") { _, _ ->
-                // ... (getting item, qty, amount)
-
-                var permit = false // Default to false
+                var permit = false
                 if (isAdmin) {
                     val checkedRadioButtonId = permitRg.checkedRadioButtonId
                     if (checkedRadioButtonId != -1) {
                         val selectedRadioButton: RadioButton = permitRg.findViewById(checkedRadioButtonId)
-
-                        // ✅ THIS IS THE FIX
-                        // Check for the text "True" instead of "Yes"
                         if (selectedRadioButton.text.toString().equals("True", ignoreCase = true)) {
                             permit = true
                         }
@@ -138,14 +131,13 @@ class expenses : Fragment() {
                 val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
                 val currentTime = sdf.format(Date())
 
-                // Create the newExpense object with the now-correct 'permit' value
                 val newExpense = Expense(
                     uniqueId = UUID.randomUUID().toString(),
                     item = itemEt.text.toString().trim(),
                     description = descEt.text.toString().trim(),
                     quantity = qtyEt.text.toString().toDoubleOrNull() ?: 0.0,
                     amount = amountEt.text.toString().toDoubleOrNull() ?: 0.0,
-                    permit = permit, // This will now be correct
+                    permit = permit,
                     user = GoogleSignIn.getLastSignedInAccount(requireContext())?.email ?: "unknown",
                     timestamp = currentTime,
                     approvalTimestamp = if (permit) currentTime else ""
@@ -210,6 +202,7 @@ class expenses : Fragment() {
             .show()
     }
 
+    // ✅ MODIFIED FUNCTION TO FILTER FOR TODAY
     private fun fetchExpensesFromSheet() {
         val progressDialog = ProgressDialog(requireContext()).apply { setMessage("Loading Expenses..."); setCancelable(false); show() }
         lifecycleScope.launch(Dispatchers.IO) {
@@ -241,13 +234,33 @@ class expenses : Fragment() {
                     )
                 }
 
+                // --- FILTERING LOGIC ---
+                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                val calendar = Calendar.getInstance()
+                val today = calendar.get(Calendar.DAY_OF_YEAR)
+                val currentYear = calendar.get(Calendar.YEAR)
+
+                val todaysExpenses = tempList.filter { expense ->
+                    try {
+                        val expenseDate = sdf.parse(expense.timestamp)
+                        val expenseCal = Calendar.getInstance().apply { time = expenseDate!! }
+                        expenseCal.get(Calendar.DAY_OF_YEAR) == today && expenseCal.get(Calendar.YEAR) == currentYear
+                    } catch (e: Exception) {
+                        // If the timestamp is invalid or cannot be parsed, don't include it.
+                        false
+                    }
+                }
+                // --- END OF FILTERING ---
+
                 withContext(Dispatchers.Main) {
                     expenseList.clear()
-                    expenseList.addAll(tempList)
+                    // Add only the filtered list to the adapter's list
+                    expenseList.addAll(todaysExpenses)
                     expenseAdapter.notifyDataSetChanged()
 
                     if (expenseList.isEmpty()) {
-                        Toast.makeText(requireContext(), "No expenses found.", Toast.LENGTH_SHORT).show()
+                        // Update the message to be more specific
+                        Toast.makeText(requireContext(), "No expenses found for today.", Toast.LENGTH_SHORT).show()
                     }
                 }
 
@@ -340,6 +353,7 @@ class expenses : Fragment() {
         }
     }
 
+    //<editor-fold desc="Google API Helper Functions">
     private suspend fun ensureExpensesSheetExists(sheetsService: Sheets, spreadsheetId: String) {
         val spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute()
         if (spreadsheet.sheets.none { it.properties.title == EXPENSES_SHEET_NAME }) {
@@ -385,4 +399,5 @@ class expenses : Fragment() {
         super.onDestroyView()
         _binding = null
     }
+    //</editor-fold>
 }

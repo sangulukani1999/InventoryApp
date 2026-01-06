@@ -2,17 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     package="com.example.zed">
-
     <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.CAMERA" />
-
-    <!-- Feature for devices with camera -->
+    <uses-permission android:name="android.permission.CAMERA" /> <!-- Feature for devices with camera -->
     <uses-feature
         android:name="android.hardware.camera"
-        android:required="false" />
-
-    <!-- QUERIES goes here: Allows app to find the camera app -->
+        android:required="false" /> <!-- QUERIES goes here: Allows app to find the camera app -->
     <queries>
         <intent>
             <action android:name="android.media.action.IMAGE_CAPTURE" />
@@ -30,9 +25,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Zed">
         <activity
-            android:name=".CameraActivity"
+            android:name=".purchase_requisition"
             android:exported="false" />
-        <!-- Your Activities -->
+        <activity
+            android:name=".CameraActivity"
+            android:exported="false" /> <!-- Your Activities -->
         <activity
             android:name=".stockList"
             android:exported="false" />
@@ -44,6 +41,7 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
+
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
@@ -64,9 +62,7 @@
             android:exported="false" />
         <activity
             android:name=".cashTracker"
-            android:exported="false" />
-
-        <!-- FILEPROVIDER goes here: Critical for the camera to save photos -->
+            android:exported="false" /> <!-- FILEPROVIDER goes here: Critical for the camera to save photos -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider"
@@ -76,7 +72,6 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
-
     </application>
 
 </manifest>

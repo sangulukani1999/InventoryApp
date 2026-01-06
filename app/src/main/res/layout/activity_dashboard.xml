@@ -17,7 +17,7 @@
         app:layout_constraintTop_toTopOf="parent">
 
         <androidx.cardview.widget.CardView
-            android:id="@+id/cardView7"
+            android:id="@+id/purchaseRequisition"
             android:layout_width="104dp"
             android:layout_height="146dp"
             android:layout_marginTop="32dp"
@@ -228,7 +228,7 @@
             app:cardCornerRadius="7dp"
             app:layout_constraintEnd_toStartOf="@+id/cashTrackerBtn"
             app:layout_constraintHorizontal_bias="0.5"
-            app:layout_constraintStart_toEndOf="@+id/cardView7"
+            app:layout_constraintStart_toEndOf="@+id/purchaseRequisition"
             app:layout_constraintTop_toBottomOf="@+id/cardView2">
 
             <androidx.constraintlayout.widget.ConstraintLayout

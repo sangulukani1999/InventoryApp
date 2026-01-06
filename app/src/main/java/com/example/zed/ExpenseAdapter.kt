@@ -24,7 +24,7 @@ class ExpenseAdapter(
             binding.qtyExpense.text = String.format(Locale.US, "%.2f", expense.quantity)
 
             // ✅ FIX 1: Set the amount to its dedicated TextView
-            binding.amountExpense.text = String.format(Locale.US, "%.2f", expense.amount)
+           binding.individualTotalValue.text = String.format(Locale.US, "%.2f", expense.amount)
 
             // ✅ FIX 2: Set the background of the View, not its text
             if (expense.permit) {

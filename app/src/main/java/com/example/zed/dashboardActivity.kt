@@ -56,6 +56,13 @@ class dashboardActivity : AppCompatActivity() {
         }
 
         // CardView navigation example
+        val purchaseRequisition = findViewById<CardView>(R.id.purchaseRequisition)
+        purchaseRequisition.setOnClickListener {
+            // Correct: Point the Intent to the actual Activity class for the new screen
+            startActivity(Intent(this, purchase_requisition::class.java))
+        }
+
+        // CardView navigation example
         val cashTrackerbtn = findViewById<CardView>(R.id.cashTrackerBtn)
         cashTrackerbtn.setOnClickListener {
             // Correct: Point the Intent to the actual Activity class for the new screen
