@@ -12,11 +12,12 @@
         android:id="@+id/top_border_frame"
         android:layout_width="0dp"
         android:layout_height="4dp"
-        android:background="#FFA000"
+        android:layout_marginTop="16dp"
+        android:background="#2196F3"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        tools:background="#00C853" />
+        tools:background="#0071c1" />
 
     <androidx.cardview.widget.CardView
         android:id="@+id/main_card"
@@ -65,7 +66,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="12dp"
                 android:textColor="@android:color/black"
-                android:textSize="16sp"
+                android:textSize="11sp"
                 android:textStyle="bold"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toEndOf="@id/product_image"
@@ -79,7 +80,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:text="Cost:"
-                android:textSize="14sp"
+                android:textSize="10sp"
                 app:layout_constraintStart_toStartOf="@id/product_name"
                 app:layout_constraintTop_toBottomOf="@id/product_name" />
 
@@ -89,7 +90,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginStart="4dp"
                 android:textColor="@color/black"
-                android:textSize="14sp"
+                android:textSize="10sp"
                 android:textStyle="bold"
                 app:layout_constraintBaseline_toBaselineOf="@id/unit_cost_label"
                 app:layout_constraintStart_toEndOf="@id/unit_cost_label"
@@ -102,25 +103,25 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Qty:"
-                android:textSize="14sp"
+                android:textSize="10sp"
                 app:layout_constraintBottom_toBottomOf="@+id/quantityInput"
                 app:layout_constraintStart_toStartOf="@id/unit_cost_label"
                 app:layout_constraintTop_toTopOf="@+id/quantityInput" />
 
             <EditText
                 android:id="@+id/quantityInput"
-                android:layout_width="70dp"
+                android:layout_width="60dp"
                 android:layout_height="48dp"
                 android:layout_marginStart="8dp"
                 android:layout_marginTop="8dp"
-                android:background="@drawable/bubble_blue"
+                android:background="#2196F3"
                 android:ems="10"
                 android:gravity="center"
                 android:inputType="number"
                 android:paddingHorizontal="8dp"
                 android:text="1"
-                android:textColor="@android:color/black"
-                android:textSize="14sp"
+                android:textColor="#fff"
+                android:textSize="11sp"
                 app:layout_constraintStart_toEndOf="@id/quantity_label"
                 app:layout_constraintTop_toBottomOf="@id/unit_cost_label" />
 
@@ -130,12 +131,13 @@
                 android:id="@+id/individualTotalValue"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
                 android:textColor="#0071c1"
-                android:textSize="18sp"
+                android:textSize="11sp"
                 android:textStyle="bold"
                 app:layout_constraintBottom_toBottomOf="@id/quantityInput"
                 app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintTop_toTopOf="@id/quantityInput"
+                app:layout_constraintTop_toBottomOf="@+id/quantityInput"
                 tools:text="$12.99" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>
