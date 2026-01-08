@@ -1,19 +1,18 @@
 package com.example.zed
 
 import android.app.ProgressDialog
-import android.graphics.Color
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SearchView
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.contains
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.zed.databinding.ActivityPurchaseRequisitionBinding
@@ -35,6 +34,7 @@ import okhttp3.*
 import org.json.JSONArray
 import org.json.JSONException
 import java.io.IOException
+import java.math.BigDecimal
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -42,15 +42,10 @@ class purchase_requisition : AppCompatActivity() {
 
     private val allProductsForSearch = mutableListOf<Product>()
     private lateinit var suggestionAdapter: androidx.cursoradapter.widget.CursorAdapter
-
     private lateinit var binding: ActivityPurchaseRequisitionBinding
     private lateinit var adapter: PurchaseRequisitionAdapter
-
-    // Master list that never changes after being fetched
     private val requisitionItems = mutableListOf<RequisitionItem>()
-    // Filtered list that is displayed in the RecyclerView
     private val filteredRequisitionItems = mutableListOf<RequisitionItem>()
-
     private var isAdmin = false
     private lateinit var currentUserEmail: String
     private lateinit var googleAccount: GoogleSignInAccount
@@ -73,13 +68,33 @@ class purchase_requisition : AppCompatActivity() {
         }
 
         setupSearchView()
-        setupFilterButtons() // Set up click listeners for filter buttons
+        setupFilterButtons()
+
+        binding.ClearSelectedItems.setOnClickListener {
+            adapter.clearAllSelections()
+        }
 
         binding.barcodeScanner.setOnClickListener {
             val scannerDialog = BarcodeScannerDialogFragment { scannedBarcode ->
                 findAndHighlightItem(scannedBarcode)
             }
             scannerDialog.show(supportFragmentManager, "PurchaseRequisitionScanner")
+        }
+
+        binding.submitPurchaseRequisition.setOnClickListener {
+            val selectedItems = requisitionItems.filter { it.isChecked && it.quantity > 0 }
+            if (selectedItems.isNotEmpty()) {
+                AlertDialog.Builder(this)
+                    .setTitle("Confirm Submission")
+                    .setMessage("Are you sure you want to submit ${selectedItems.size} item(s) to the purchase requisition?")
+                    .setPositiveButton("Submit") { _, _ ->
+                        submitRequisitionToSheet(selectedItems)
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            } else {
+                Toast.makeText(this, "No items selected to submit.", Toast.LENGTH_SHORT).show()
+            }
         }
 
         val account = GoogleSignIn.getLastSignedInAccount(this)
@@ -110,13 +125,112 @@ class purchase_requisition : AppCompatActivity() {
         }
     }
 
+    private fun setupRecyclerView() {
+        adapter = PurchaseRequisitionAdapter(
+            filteredRequisitionItems,
+            currentUserEmail,
+            isAdmin,
+            onItemChanged = {
+                updateSelectionCount()
+                updateTotalBudget()
+            },
+            onTotalChanged = {
+                updateTotalBudget()
+                updateSelectionCount()
+            }
+        )
+        binding.purchaseRequisitionRecyclerView.layoutManager = LinearLayoutManager(this)
+        binding.purchaseRequisitionRecyclerView.adapter = adapter
+    }
+
+    private fun submitRequisitionToSheet(selectedItems: List<RequisitionItem>) {
+        val progressDialog = ProgressDialog(this).apply {
+            setMessage("Submitting requisition...")
+            setCancelable(false)
+            show()
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val sheetsService = getSheetsService(googleAccount)
+                val spreadsheetId = findSheetIdByName(getDriveService(googleAccount), "nia-bridge data")
+                    ?: throw Exception("Spreadsheet not found.")
+
+                ensureRequisitionSheetExists(sheetsService, spreadsheetId)
+
+                // --- Generate a single unique code for this entire submission ---
+                val timestampForCode = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
+                val randomPart = (1000..9999).random().toString(16).uppercase() // e.g., 1A2B
+                val purchaseRequisitionCode = "PR-$timestampForCode-$randomPart"
+                // ---
+
+                val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                val newRows = mutableListOf<List<Any>>()
+
+                selectedItems.forEach { item ->
+                    val unitPrice = item.product.unitCost.toBigDecimalOrNull() ?: BigDecimal.ZERO
+                    val quantity = item.quantity.toBigDecimal()
+                    val totalPrice = unitPrice * quantity
+
+                    newRows.add(
+                        listOf(
+                            item.uniqueSheetId,                 // Unique ID
+                            item.product.name,                  // Product Name
+                            purchaseRequisitionCode,            // Purchase Requisition code (same for all)
+                            item.product.unit,                  // Unit Description
+                            item.quantity,                      // Quantity
+                            unitPrice.toPlainString(),          // unit price
+                            totalPrice.toPlainString(),         // Total Price
+                            currentUserEmail,                   // Users
+                            timestamp                           // TimeStamp
+                        )
+                    )
+                }
+
+                if (newRows.isNotEmpty()) {
+                    val body = ValueRange().setValues(newRows)
+                    sheetsService.spreadsheets().values()
+                        .append(spreadsheetId, "$REQUISITION_SHEET_NAME!A1", body)
+                        .setValueInputOption("USER_ENTERED")
+                        .execute()
+                }
+
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    Toast.makeText(this@purchase_requisition, "Requisition submitted successfully!", Toast.LENGTH_LONG).show()
+                    adapter.clearAllSelections()
+                }
+
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    Log.e("SubmitRequisition", "Failed to submit to sheet", e)
+                    Toast.makeText(this@purchase_requisition, "Submission failed: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun updateSelectionCount() {
+        val selectedCount = requisitionItems.count { it.isChecked }
+        binding.noItemsSelected.text = selectedCount.toString()
+    }
+
+    private fun updateTotalBudget() {
+        // Calculate total from the filtered (visible) list
+        val total = filteredRequisitionItems.filter { it.isChecked && it.quantity > 0 }
+            .sumOf {
+                val cost = it.product.unitCost.toBigDecimalOrNull() ?: BigDecimal.ZERO
+                cost * it.quantity.toBigDecimal()
+            }
+        binding.totalBudgetValue.text = "K${"%.2f".format(total)}"
+    }
+
     private fun setupFilterButtons() {
         binding.AllBtn.setOnClickListener { applyFilter(FilterType.ALL) }
         binding.DepletedItem.setOnClickListener { applyFilter(FilterType.DEPLETED) }
         binding.MinimumOrder.setOnClickListener { applyFilter(FilterType.MIN_ORDER) }
         binding.withinMonthExpirely.setOnClickListener { applyFilter(FilterType.EXPIRING_SOON) }
-
-        // Set the initial active button
         updateActiveButton(binding.AllBtn)
     }
 
@@ -148,11 +262,8 @@ class purchase_requisition : AppCompatActivity() {
                     try {
                         val expiryDateStr = it.product.expiryDate
                         if (expiryDateStr.isNullOrBlank()) return@filter false
-
-                        // Handle different date formats gracefully
                         val sdf = if (expiryDateStr.contains("-")) SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) else SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
                         val expiryDate = sdf.parse(expiryDateStr)
-
                         expiryDate != null && expiryDate.before(oneMonthFromNow) && expiryDate.after(Date())
                     } catch (e: Exception) {
                         Log.e("Filter", "Could not parse date: ${it.product.expiryDate}", e)
@@ -166,14 +277,13 @@ class purchase_requisition : AppCompatActivity() {
         filteredRequisitionItems.addAll(filteredList)
         adapter.notifyDataSetChanged()
 
-        // Update total budget based on the newly filtered and visible items
         updateTotalBudget()
+        updateSelectionCount()
     }
 
     private fun updateActiveButton(activeButton: CardView) {
         val activeColor = ContextCompat.getColor(this, R.color.active_filter_color)
         val inactiveColor = ContextCompat.getColor(this, R.color.inactive_filter_color)
-
         binding.AllBtn.setCardBackgroundColor(if (activeButton.id == R.id.AllBtn) activeColor else inactiveColor)
         binding.DepletedItem.setCardBackgroundColor(if (activeButton.id == R.id.DepletedItem) activeColor else inactiveColor)
         binding.MinimumOrder.setCardBackgroundColor(if (activeButton.id == R.id.MinimumOrder) activeColor else inactiveColor)
@@ -239,7 +349,6 @@ class purchase_requisition : AppCompatActivity() {
         lifecycleScope.launch {
             delay(50)
 
-            // Ensure "All" filter is active to find the item in the full list
             if (binding.AllBtn.cardBackgroundColor.defaultColor != ContextCompat.getColor(this@purchase_requisition, R.color.active_filter_color)) {
                 applyFilter(FilterType.ALL)
             }
@@ -264,28 +373,6 @@ class purchase_requisition : AppCompatActivity() {
         }
     }
 
-    private fun setupRecyclerView() {
-        // The adapter now points to the filtered list
-        adapter = PurchaseRequisitionAdapter(
-            filteredRequisitionItems, // Use the filtered list
-            currentUserEmail,
-            isAdmin,
-            onItemChanged = { item ->
-                writeRequisitionToSheet(item)
-            },
-            onTotalChanged = {
-                updateTotalBudget()
-            }
-        )
-        binding.purchaseRequisitionRecyclerView.layoutManager = LinearLayoutManager(this)
-        binding.purchaseRequisitionRecyclerView.adapter = adapter
-    }
-
-    private fun updateTotalBudget() {
-        val total = adapter.calculateTotalBudgetedAmount()
-        binding.totalBudgetValue.text = "K${"%.2f".format(total)}"
-    }
-
     private fun fetchProductsFromSheet() {
         val progressDialog = ProgressDialog(this).apply {
             setMessage("Fetching products..."); setCancelable(false); show()
@@ -297,10 +384,8 @@ class purchase_requisition : AppCompatActivity() {
                 val spreadsheetId = findSheetIdByName(getDriveService(googleAccount), "nia-bridge data")
                     ?: throw Exception("Spreadsheet 'nia-bridge data' not found.")
 
-                // Make sure the "expiry date" header exists
                 ensureExpiryDateHeaderExists(sheetsService, spreadsheetId)
 
-                // Fetch up to column M
                 val productsRange = "Products!A2:M"
                 val productsResponse = sheetsService.spreadsheets().values().get(spreadsheetId, productsRange).execute()
                 val productValues = productsResponse.getValues()
@@ -321,7 +406,7 @@ class purchase_requisition : AppCompatActivity() {
                             minOrder = row.getOrNull(7)?.toString() ?: "0",
                             unitCost = row.getOrNull(8)?.toString() ?: "0.00",
                             locationIds = row.getOrNull(9)?.toString()?.removeSurrounding("['", "']")?.split("', '")?.filter { it.isNotBlank() } ?: emptyList(),
-                            expiryDate = row.getOrNull(12)?.toString() // Column M is index 12
+                            expiryDate = row.getOrNull(12)?.toString()
                         )
                     }
                 }
@@ -332,14 +417,10 @@ class purchase_requisition : AppCompatActivity() {
 
                 withContext(Dispatchers.Main) {
                     progressDialog.dismiss()
-
                     allProductsForSearch.clear()
                     allProductsForSearch.addAll(productList)
-
                     requisitionItems.clear()
                     requisitionItems.addAll(items)
-
-                    // Apply the default "ALL" filter on initial load
                     applyFilter(FilterType.ALL)
                 }
 
@@ -353,6 +434,28 @@ class purchase_requisition : AppCompatActivity() {
         }
     }
 
+    private suspend fun ensureRequisitionSheetExists(sheetsService: Sheets, spreadsheetId: String) {
+        val spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute()
+        if (spreadsheet.sheets.none { it.properties.title == REQUISITION_SHEET_NAME }) {
+            // ✅ FIX: Use the full class name to resolve ambiguity
+            val addSheetRequest = com.google.api.services.sheets.v4.model.Request()
+                .setAddSheet(AddSheetRequest().setProperties(SheetProperties().setTitle(REQUISITION_SHEET_NAME)))
+            sheetsService.spreadsheets().batchUpdate(spreadsheetId, BatchUpdateSpreadsheetRequest().setRequests(listOf(addSheetRequest))).execute()
+
+            // New header row
+            val headers = listOf(listOf(
+                "Unique ID", "Product Name", "Purchase Requisition code", "Unit Description",
+                "Quantity", "unit price", "Total Price", "Users", "TimeStamp"
+            ))
+            val headerBody = ValueRange().setValues(headers)
+            sheetsService.spreadsheets().values()
+                .update(spreadsheetId, "$REQUISITION_SHEET_NAME!A1", headerBody)
+                .setValueInputOption("USER_ENTERED")
+                .execute()
+        }
+    }
+
+
     private suspend fun ensureExpiryDateHeaderExists(sheetsService: Sheets, spreadsheetId: String) {
         val range = "Products!M1"
         val response = sheetsService.spreadsheets().values().get(spreadsheetId, range).execute()
@@ -364,74 +467,6 @@ class purchase_requisition : AppCompatActivity() {
                 .setValueInputOption("USER_ENTERED")
                 .execute()
             Log.i("SheetSetup", "Added 'expiry date' header to column M.")
-        }
-    }
-
-    private fun writeRequisitionToSheet(item: RequisitionItem) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val sheetsService = getSheetsService(googleAccount)
-                val spreadsheetId = findSheetIdByName(getDriveService(googleAccount), "nia-bridge data")
-                    ?: throw Exception("Spreadsheet not found.")
-
-                ensureRequisitionSheetExists(sheetsService, spreadsheetId)
-
-                val searchRange = "$REQUISITION_SHEET_NAME!D:D" // Column D for Unique ID
-                val searchResponse = sheetsService.spreadsheets().values().get(spreadsheetId, searchRange).execute()
-                val existingRowIndex = searchResponse.getValues()?.flatten()?.indexOf(item.uniqueSheetId)?.let { if (it != -1) it + 2 else null }
-
-                val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
-
-                if (existingRowIndex != null) {
-                    val shouldBeActive = item.isChecked && item.quantity > 0
-                    val updateValues = listOf(
-                        listOf(
-                            timestamp,
-                            currentUserEmail,
-                            item.product.name,
-                            item.uniqueSheetId,
-                            item.product.unit,
-                            item.quantity,
-                            item.product.unitCost,
-                            if (shouldBeActive) "ACTIVE" else "REMOVED"
-                        )
-                    )
-                    val valueRange = ValueRange().setValues(updateValues)
-                    sheetsService.spreadsheets().values()
-                        .update(spreadsheetId, "$REQUISITION_SHEET_NAME!A$existingRowIndex", valueRange)
-                        .setValueInputOption("USER_ENTERED")
-                        .execute()
-                } else if (item.isChecked && item.quantity > 0) {
-                    val newRow = listOf(
-                        listOf(timestamp, currentUserEmail, item.product.name, item.uniqueSheetId, item.product.unit, item.quantity, item.product.unitCost, "ACTIVE")
-                    )
-                    val appendBody = ValueRange().setValues(newRow)
-                    sheetsService.spreadsheets().values()
-                        .append(spreadsheetId, "$REQUISITION_SHEET_NAME!A1", appendBody)
-                        .setValueInputOption("USER_ENTERED")
-                        .execute()
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Log.e("WriteRequisition", "Failed to write to sheet", e)
-                }
-            }
-        }
-    }
-
-    private suspend fun ensureRequisitionSheetExists(sheetsService: Sheets, spreadsheetId: String) {
-        val spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute()
-        if (spreadsheet.sheets.none { it.properties.title == REQUISITION_SHEET_NAME }) {
-            val addSheetRequest = com.google.api.services.sheets.v4.model.Request()
-                .setAddSheet(AddSheetRequest().setProperties(SheetProperties().setTitle(REQUISITION_SHEET_NAME)))
-            sheetsService.spreadsheets().batchUpdate(spreadsheetId, BatchUpdateSpreadsheetRequest().setRequests(listOf(addSheetRequest))).execute()
-
-            val headers = listOf(listOf("Timestamp", "User", "Product Name", "Unique ID", "Unit Description", "Quantity", "Unit Price", "Status"))
-            val headerBody = ValueRange().setValues(headers)
-            sheetsService.spreadsheets().values()
-                .update(spreadsheetId, "$REQUISITION_SHEET_NAME!A1", headerBody)
-                .setValueInputOption("USER_ENTERED")
-                .execute()
         }
     }
 
