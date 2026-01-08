@@ -335,7 +335,8 @@ class InventoryItemDetails : AppCompatActivity() {
                         caseQty = row.getOrNull(6)?.toString() ?: "0",
                         minOrder = row.getOrNull(7)?.toString() ?: "0",
                         unitCost = row.getOrNull(8)?.toString() ?: "0.00",
-                        locationIds = row.getOrNull(9)?.toString()?.removeSurrounding("['", "']")?.split("', '")?.filter { it.isNotBlank() } ?: emptyList()
+                        locationIds = row.getOrNull(9)?.toString()?.removeSurrounding("['", "']")?.split("', '")?.filter { it.isNotBlank() } ?: emptyList(),
+                        expiryDate = row.getOrNull(10)?.toString() ?: ""
                     )
                 }
                 allProductsForSearch.clear()

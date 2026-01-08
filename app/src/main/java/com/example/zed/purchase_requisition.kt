@@ -1,17 +1,19 @@
 package com.example.zed
 
 import android.app.ProgressDialog
-import android.content.Intent
+import android.graphics.Color
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SearchView
+import androidx.cardview.widget.CardView
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.contains
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.zed.databinding.ActivityPurchaseRequisitionBinding
@@ -43,13 +45,21 @@ class purchase_requisition : AppCompatActivity() {
 
     private lateinit var binding: ActivityPurchaseRequisitionBinding
     private lateinit var adapter: PurchaseRequisitionAdapter
-    private val requisitionItems = mutableListOf<RequisitionItem>()
 
-    private var isAdmin = false // Default to false until role is confirmed
+    // Master list that never changes after being fetched
+    private val requisitionItems = mutableListOf<RequisitionItem>()
+    // Filtered list that is displayed in the RecyclerView
+    private val filteredRequisitionItems = mutableListOf<RequisitionItem>()
+
+    private var isAdmin = false
     private lateinit var currentUserEmail: String
     private lateinit var googleAccount: GoogleSignInAccount
 
     private val REQUISITION_SHEET_NAME = "purchase_requisition_sheet"
+
+    private enum class FilterType {
+        ALL, DEPLETED, MIN_ORDER, EXPIRING_SOON
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -61,7 +71,10 @@ class purchase_requisition : AppCompatActivity() {
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
+
         setupSearchView()
+        setupFilterButtons() // Set up click listeners for filter buttons
+
         binding.barcodeScanner.setOnClickListener {
             val scannerDialog = BarcodeScannerDialogFragment { scannedBarcode ->
                 findAndHighlightItem(scannedBarcode)
@@ -72,34 +85,99 @@ class purchase_requisition : AppCompatActivity() {
         val account = GoogleSignIn.getLastSignedInAccount(this)
         if (account == null) {
             Toast.makeText(this, "User not signed in!", Toast.LENGTH_LONG).show()
-            finish()
-            return
+            finish(); return
         }
 
         val email = account.email
         if (email == null) {
-            Toast.makeText(this, "Could not retrieve user email. Please sign in again.", Toast.LENGTH_LONG).show()
-            finish()
-            return
+            Toast.makeText(this, "Could not retrieve user email.", Toast.LENGTH_LONG).show()
+            finish(); return
         }
 
         googleAccount = account
         currentUserEmail = email
 
         val progressDialog = ProgressDialog(this).apply {
-            setMessage("Verifying user...")
-            setCancelable(false)
-            show()
+            setMessage("Verifying user..."); setCancelable(false); show()
         }
 
         checkUserRole(currentUserEmail) { isAdminResult, _, _ ->
             progressDialog.dismiss()
             this.isAdmin = isAdminResult
             Log.d("PurchaseRequisition", "Role check complete. User is admin: $isAdmin")
-
             setupRecyclerView()
             fetchProductsFromSheet()
         }
+    }
+
+    private fun setupFilterButtons() {
+        binding.AllBtn.setOnClickListener { applyFilter(FilterType.ALL) }
+        binding.DepletedItem.setOnClickListener { applyFilter(FilterType.DEPLETED) }
+        binding.MinimumOrder.setOnClickListener { applyFilter(FilterType.MIN_ORDER) }
+        binding.withinMonthExpirely.setOnClickListener { applyFilter(FilterType.EXPIRING_SOON) }
+
+        // Set the initial active button
+        updateActiveButton(binding.AllBtn)
+    }
+
+    private fun applyFilter(filterType: FilterType) {
+        val filteredList = when (filterType) {
+            FilterType.ALL -> {
+                updateActiveButton(binding.AllBtn)
+                requisitionItems
+            }
+            FilterType.DEPLETED -> {
+                updateActiveButton(binding.DepletedItem)
+                requisitionItems.filter { (it.product.caseQty.toDoubleOrNull() ?: 0.0) == 0.0 }
+            }
+            FilterType.MIN_ORDER -> {
+                updateActiveButton(binding.MinimumOrder)
+                requisitionItems.filter {
+                    val caseQty = it.product.caseQty.toDoubleOrNull() ?: 0.0
+                    val minOrder = it.product.minOrder.toDoubleOrNull() ?: 0.0
+                    caseQty <= minOrder && minOrder > 0
+                }
+            }
+            FilterType.EXPIRING_SOON -> {
+                updateActiveButton(binding.withinMonthExpirely)
+                val calendar = Calendar.getInstance()
+                calendar.add(Calendar.MONTH, 1)
+                val oneMonthFromNow = calendar.time
+
+                requisitionItems.filter {
+                    try {
+                        val expiryDateStr = it.product.expiryDate
+                        if (expiryDateStr.isNullOrBlank()) return@filter false
+
+                        // Handle different date formats gracefully
+                        val sdf = if (expiryDateStr.contains("-")) SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) else SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+                        val expiryDate = sdf.parse(expiryDateStr)
+
+                        expiryDate != null && expiryDate.before(oneMonthFromNow) && expiryDate.after(Date())
+                    } catch (e: Exception) {
+                        Log.e("Filter", "Could not parse date: ${it.product.expiryDate}", e)
+                        false
+                    }
+                }
+            }
+        }
+
+        filteredRequisitionItems.clear()
+        filteredRequisitionItems.addAll(filteredList)
+        adapter.notifyDataSetChanged()
+
+        // Update total budget based on the newly filtered and visible items
+        updateTotalBudget()
+    }
+
+    private fun updateActiveButton(activeButton: CardView) {
+        val activeColor = ContextCompat.getColor(this, R.color.active_filter_color)
+        val inactiveColor = ContextCompat.getColor(this, R.color.inactive_filter_color)
+
+        binding.AllBtn.setCardBackgroundColor(if (activeButton.id == R.id.AllBtn) activeColor else inactiveColor)
+        binding.DepletedItem.setCardBackgroundColor(if (activeButton.id == R.id.DepletedItem) activeColor else inactiveColor)
+        binding.MinimumOrder.setCardBackgroundColor(if (activeButton.id == R.id.MinimumOrder) activeColor else inactiveColor)
+        binding.withinMonthExpirely.setCardBackgroundColor(if (activeButton.id == R.id.withinMonthExpirely) activeColor else inactiveColor)
     }
 
     private fun setupSearchView() {
@@ -107,11 +185,9 @@ class purchase_requisition : AppCompatActivity() {
         binding.searchView.suggestionsAdapter = suggestionAdapter
 
         binding.searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            // ✅ MODIFIED: When user submits search, find and highlight the item.
             override fun onQueryTextSubmit(query: String?): Boolean {
                 val firstMatch = allProductsForSearch.firstOrNull { it.name.contains(query ?: "", ignoreCase = true) }
                 if (firstMatch != null) {
-                    // Use the existing highlight function
                     findAndHighlightItem(firstMatch.barcode)
                 } else {
                     Toast.makeText(this@purchase_requisition, "No product found for '$query'", Toast.LENGTH_SHORT).show()
@@ -122,7 +198,6 @@ class purchase_requisition : AppCompatActivity() {
             }
 
             override fun onQueryTextChange(newText: String?): Boolean {
-                // This filters the suggestion dropdown as the user types
                 updateSearchSuggestions(newText)
                 return true
             }
@@ -130,13 +205,10 @@ class purchase_requisition : AppCompatActivity() {
 
         binding.searchView.setOnSuggestionListener(object : SearchView.OnSuggestionListener {
             override fun onSuggestionSelect(position: Int): Boolean = true
-
-            // ✅ MODIFIED: When user clicks a suggestion, find and highlight the item.
             override fun onSuggestionClick(position: Int): Boolean {
                 (suggestionAdapter.getItem(position) as? Cursor)?.let {
                     val barcodeIndex = it.getColumnIndex("productBarcode")
                     if (barcodeIndex != -1) {
-                        // Use the existing highlight function
                         findAndHighlightItem(it.getString(barcodeIndex))
                     }
                 }
@@ -146,9 +218,6 @@ class purchase_requisition : AppCompatActivity() {
             }
         })
     }
-
-    // ✅ REMOVED: This function is no longer needed as we are not navigating away.
-    // private fun validateBarcodeAndNavigate(barcode: String) { ... }
 
     private fun updateSearchSuggestions(query: String?) {
         val newCursor = MatrixCursor(arrayOf("_id", "productName", "productBarcode"))
@@ -162,33 +231,32 @@ class purchase_requisition : AppCompatActivity() {
         suggestionAdapter.changeCursor(newCursor)
     }
 
-
     private fun findAndHighlightItem(barcode: String) {
         val progressDialog = ProgressDialog(this).apply {
-            setMessage("Finding item...")
-            setCancelable(false)
-            show()
+            setMessage("Finding item..."); setCancelable(false); show()
         }
 
         lifecycleScope.launch {
-            delay(50) // Keep the delay to ensure the dialog shows
+            delay(50)
 
-            val itemIndex = requisitionItems.indexOfFirst { it.product.barcode == barcode }
+            // Ensure "All" filter is active to find the item in the full list
+            if (binding.AllBtn.cardBackgroundColor.defaultColor != ContextCompat.getColor(this@purchase_requisition, R.color.active_filter_color)) {
+                applyFilter(FilterType.ALL)
+            }
+
+            val itemIndex = filteredRequisitionItems.indexOfFirst { it.product.barcode == barcode }
 
             if (itemIndex != -1) {
-                // If found:
                 val previousHighlightedPosition = adapter.highlightedPosition
                 adapter.highlightedPosition = itemIndex
 
                 val layoutManager = binding.purchaseRequisitionRecyclerView.layoutManager as LinearLayoutManager
-                // This instantly moves the view so the top of the item is at the top of the RecyclerView (0px offset).
                 layoutManager.scrollToPositionWithOffset(itemIndex, 0)
 
                 if (previousHighlightedPosition != -1) {
                     adapter.notifyItemChanged(previousHighlightedPosition)
                 }
                 adapter.notifyItemChanged(itemIndex)
-
             } else {
                 Toast.makeText(this@purchase_requisition, "Product with barcode '$barcode' not found.", Toast.LENGTH_SHORT).show()
             }
@@ -197,8 +265,9 @@ class purchase_requisition : AppCompatActivity() {
     }
 
     private fun setupRecyclerView() {
+        // The adapter now points to the filtered list
         adapter = PurchaseRequisitionAdapter(
-            requisitionItems,
+            filteredRequisitionItems, // Use the filtered list
             currentUserEmail,
             isAdmin,
             onItemChanged = { item ->
@@ -219,9 +288,7 @@ class purchase_requisition : AppCompatActivity() {
 
     private fun fetchProductsFromSheet() {
         val progressDialog = ProgressDialog(this).apply {
-            setMessage("Fetching products...")
-            setCancelable(false)
-            show()
+            setMessage("Fetching products..."); setCancelable(false); show()
         }
 
         lifecycleScope.launch(Dispatchers.IO) {
@@ -230,7 +297,11 @@ class purchase_requisition : AppCompatActivity() {
                 val spreadsheetId = findSheetIdByName(getDriveService(googleAccount), "nia-bridge data")
                     ?: throw Exception("Spreadsheet 'nia-bridge data' not found.")
 
-                val productsRange = "Products!A2:K"
+                // Make sure the "expiry date" header exists
+                ensureExpiryDateHeaderExists(sheetsService, spreadsheetId)
+
+                // Fetch up to column M
+                val productsRange = "Products!A2:M"
                 val productsResponse = sheetsService.spreadsheets().values().get(spreadsheetId, productsRange).execute()
                 val productValues = productsResponse.getValues()
 
@@ -249,28 +320,27 @@ class purchase_requisition : AppCompatActivity() {
                             caseQty = row.getOrNull(6)?.toString() ?: "0",
                             minOrder = row.getOrNull(7)?.toString() ?: "0",
                             unitCost = row.getOrNull(8)?.toString() ?: "0.00",
-                            locationIds = row.getOrNull(9)?.toString()?.removeSurrounding("['", "']")?.split("', '")?.filter { it.isNotBlank() } ?: emptyList()
+                            locationIds = row.getOrNull(9)?.toString()?.removeSurrounding("['", "']")?.split("', '")?.filter { it.isNotBlank() } ?: emptyList(),
+                            expiryDate = row.getOrNull(12)?.toString() // Column M is index 12
                         )
                     }
                 }
 
-                // Convert Product to RequisitionItem
                 val items = productList.map {
-                    RequisitionItem(
-                        product = it,
-                        uniqueSheetId = it.barcode
-                    )
+                    RequisitionItem(product = it, uniqueSheetId = it.barcode)
                 }
 
                 withContext(Dispatchers.Main) {
                     progressDialog.dismiss()
-                    // Populate both lists
+
                     allProductsForSearch.clear()
                     allProductsForSearch.addAll(productList)
+
                     requisitionItems.clear()
                     requisitionItems.addAll(items)
-                    adapter.notifyDataSetChanged()
-                    updateTotalBudget()
+
+                    // Apply the default "ALL" filter on initial load
+                    applyFilter(FilterType.ALL)
                 }
 
             } catch (e: Exception) {
@@ -280,6 +350,20 @@ class purchase_requisition : AppCompatActivity() {
                     Toast.makeText(this@purchase_requisition, "Failed to fetch products: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
+        }
+    }
+
+    private suspend fun ensureExpiryDateHeaderExists(sheetsService: Sheets, spreadsheetId: String) {
+        val range = "Products!M1"
+        val response = sheetsService.spreadsheets().values().get(spreadsheetId, range).execute()
+        if (response.getValues().isNullOrEmpty() || response.getValues()[0].isEmpty()) {
+            val values = listOf(listOf("expiry date"))
+            val body = ValueRange().setValues(values)
+            sheetsService.spreadsheets().values()
+                .update(spreadsheetId, range, body)
+                .setValueInputOption("USER_ENTERED")
+                .execute()
+            Log.i("SheetSetup", "Added 'expiry date' header to column M.")
         }
     }
 

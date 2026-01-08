@@ -233,7 +233,8 @@ class stockTaking : AppCompatActivity() {
                         name = row.getOrNull(1)?.toString() ?: "",
                         imageUrl = row.getOrNull(2)?.toString() ?: "",
                         barcode = row.getOrNull(3)?.toString() ?: "",
-                        categoryId = "", unit = "", caseQty = "", minOrder = "", unitCost = "", locationIds = emptyList()
+                        categoryId = "", unit = "", caseQty = "", minOrder = "", unitCost = "", locationIds = emptyList(),
+                        expiryDate = ""
                     )
                 } ?: emptyList()
 

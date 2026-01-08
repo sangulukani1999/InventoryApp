@@ -14,7 +14,8 @@ data class Product(
     val caseQty: String,
     val minOrder: String,
     val unitCost: String,
-    val locationIds: List<String>
+    val locationIds: List<String>,
+    val expiryDate: String?
 )
 
 data class Location(

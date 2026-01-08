@@ -11,6 +11,8 @@
     <color name="variance_negative">#F44336</color> <!-- Red -->
     <color name="variance_zero">#808080</color>   <!-- Grey -->
     <color name="item_selected_background">#E0E0E0</color> <!-- A light grey color -->
+    <color name="active_filter_color">#FFC107</color> <!-- Amber/Yellow for active -->
+    <color name="inactive_filter_color">#005596</color> <!-- Your original blue for inactive -->
 
 
 </resources>
