@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingHorizontal="8dp"
+    android:paddingTop="8dp">
+
+    <!-- The top border color can be changed dynamically in your adapter -->
+    <FrameLayout
+        android:id="@+id/top_border_frame"
+        android:layout_width="0dp"
+        android:layout_height="4dp"
+        android:layout_marginTop="16dp"
+        android:background="#F44336"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:background="#F44336" />
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/main_card"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        app:cardBackgroundColor="#FFFFFF"
+        app:cardCornerRadius="0dp"
+        app:cardElevation="2dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/top_border_frame">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="12dp">
+
+            <!-- Checkbox on the far left -->
+            <CheckBox
+                android:id="@+id/item_checkbox"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_centerVertical="true"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <!-- Product Image -->
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/product_image"
+                android:layout_width="60dp"
+                android:layout_height="60dp"
+                android:layout_marginStart="12dp"
+                android:scaleType="centerCrop"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toEndOf="@id/item_checkbox"
+                app:layout_constraintTop_toTopOf="parent"
+                app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Small"
+                tools:src="@tools:sample/backgrounds/scenic" />
+
+            <!-- Product Name -->
+            <TextView
+                android:id="@+id/product_name"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:textColor="@android:color/black"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@id/product_image"
+                app:layout_constraintTop_toTopOf="parent"
+                tools:text="High Quality Product Name" />
+
+            <!-- Unit Cost (Price) -->
+            <TextView
+                android:id="@+id/unit_cost_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="Cost:"
+                android:textSize="10sp"
+                app:layout_constraintStart_toStartOf="@id/product_name"
+                app:layout_constraintTop_toBottomOf="@id/product_name" />
+
+            <TextView
+                android:id="@+id/costValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:textColor="@color/black"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                app:layout_constraintBaseline_toBaselineOf="@id/unit_cost_label"
+                app:layout_constraintStart_toEndOf="@id/unit_cost_label"
+                tools:text="$12.99" />
+
+
+            <!-- Quantity Input -->
+            <TextView
+                android:id="@+id/quantity_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Qty:"
+                android:textSize="10sp"
+                app:layout_constraintBottom_toBottomOf="@+id/quantityInput"
+                app:layout_constraintStart_toStartOf="@id/unit_cost_label"
+                app:layout_constraintTop_toTopOf="@+id/quantityInput" />
+
+            <EditText
+                android:id="@+id/quantityInput"
+                android:layout_width="60dp"
+                android:layout_height="48dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="8dp"
+                android:background="#2196F3"
+                android:ems="10"
+                android:gravity="center"
+                android:inputType="number"
+                android:paddingHorizontal="8dp"
+                android:text="1"
+                android:textColor="#fff"
+                android:textSize="11sp"
+                app:layout_constraintStart_toEndOf="@id/quantity_label"
+                app:layout_constraintTop_toBottomOf="@id/unit_cost_label" />
+
+
+            <!-- Item Total (Calculated) -->
+            <TextView
+                android:id="@+id/individualTotalValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textColor="#0071c1"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                app:layout_constraintBottom_toBottomOf="@id/quantityInput"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/quantityInput"
+                tools:text="$12.99" />
+
+            <EditText
+                android:id="@+id/editTextDate"
+                android:layout_width="67dp"
+                android:layout_height="34dp"
+                android:ems="10"
+                android:inputType="date"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/product_name" />
+
+            <androidx.cardview.widget.CardView
+                android:id="@+id/goodsAvailabilityIndicator"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginEnd="8dp"
+                app:cardBackgroundColor="@color/variance_negative"
+                app:layout_constraintBottom_toBottomOf="@+id/goodsDateIndicator"
+                app:layout_constraintEnd_toStartOf="@+id/goodsDateIndicator"
+                app:layout_constraintTop_toTopOf="@+id/goodsDateIndicator" />
+
+            <androidx.cardview.widget.CardView
+                android:id="@+id/goodsDateIndicator"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                android:layout_marginEnd="8dp"
+                app:cardBackgroundColor="@color/variance_negative"
+                app:layout_constraintBottom_toBottomOf="@+id/goodsReceivedIndicator"
+                app:layout_constraintEnd_toStartOf="@+id/goodsReceivedIndicator"
+                app:layout_constraintTop_toTopOf="@+id/goodsReceivedIndicator">
+
+            </androidx.cardview.widget.CardView>
+
+            <androidx.cardview.widget.CardView
+                android:id="@+id/goodsReceivedIndicator"
+                android:layout_width="20dp"
+                android:layout_height="20dp"
+                app:cardBackgroundColor="@color/variance_negative"
+                app:layout_constraintBottom_toTopOf="@+id/individualTotalValue"
+                app:layout_constraintEnd_toEndOf="@+id/editTextDate"
+                app:layout_constraintTop_toBottomOf="@+id/editTextDate">
+
+            </androidx.cardview.widget.CardView>
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </androidx.cardview.widget.CardView>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

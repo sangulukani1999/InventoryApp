@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/white"
+    tools:context=".InventoryItemDetails">
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardView"
+        android:layout_width="0dp"
+        android:layout_height="70dp"
+        app:cardBackgroundColor="#0071c1"
+        app:cardElevation="5dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <ImageButton
+                android:id="@+id/reload_btn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:layout_marginEnd="16dp"
+                android:background="@android:color/transparent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:srcCompat="@drawable/sync" />
+
+            <TextView
+                android:id="@+id/textView3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Sync"
+                android:textColor="#fff"
+                android:textSize="10sp"
+                android:textStyle="normal"
+                app:layout_constraintEnd_toEndOf="@+id/reload_btn"
+                app:layout_constraintStart_toStartOf="@+id/reload_btn"
+                app:layout_constraintTop_toBottomOf="@+id/reload_btn" />
+
+            <TextView
+                android:id="@+id/textView51"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Goods Received Code"
+                android:textColor="#fff"
+                android:textSize="14sp"
+                android:textStyle="normal"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <ImageButton
+                android:id="@+id/backBtnPhysicalInventory"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:background="@android:color/transparent"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent"
+                app:srcCompat="@drawable/back_icon" />
+
+            <ImageView
+                android:id="@+id/barcodeScanner"
+                android:layout_width="40dp"
+                android:layout_height="14dp"
+                app:layout_constraintBottom_toBottomOf="@+id/textView51"
+                app:layout_constraintEnd_toStartOf="@+id/reload_btn"
+                app:layout_constraintStart_toEndOf="@+id/textView51"
+                app:layout_constraintTop_toTopOf="@+id/textView51"
+                app:srcCompat="@drawable/barcode_icon" />
+
+            <ImageView
+                android:id="@+id/imageSearchIcon"
+                android:layout_width="35dp"
+                android:layout_height="35dp"
+                app:layout_constraintEnd_toStartOf="@+id/textView51"
+                app:layout_constraintStart_toEndOf="@+id/backBtnPhysicalInventory"
+                app:layout_constraintTop_toTopOf="@+id/reload_btn"
+                app:srcCompat="@drawable/camera_search" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </androidx.cardview.widget.CardView>
+
+    <androidx.appcompat.widget.SearchView
+        android:id="@+id/searchView"
+        android:layout_width="0dp"
+        android:layout_height="44dp"
+        android:layout_marginLeft="50dp"
+        android:layout_marginTop="-20dp"
+        android:layout_marginRight="50dp"
+        android:background="@drawable/search_bg_gray"
+        android:elevation="12dp"
+        android:iconifiedByDefault="false"
+        android:queryHint="Search for a product..."
+        android:theme="@style/CustomSearchView"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.495"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/cardView" />
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/AllBtn"
+        android:layout_width="69dp"
+        android:layout_height="40dp"
+        android:layout_marginTop="16dp"
+        app:cardBackgroundColor="#005596"
+        app:cardCornerRadius="10dp"
+        app:cardElevation="0dp"
+        app:layout_constraintEnd_toStartOf="@+id/DepletedItem"
+        app:layout_constraintHorizontal_bias="0.5"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/searchView">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <TextView
+                android:id="@+id/textView27"
+                android:layout_width="wrap_content"
+                android:layout_height="15dp"
+                android:text="PDF"
+                android:textColor="#fff"
+                android:textSize="9sp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </androidx.cardview.widget.CardView>
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/DepletedItem"
+        android:layout_width="60dp"
+        android:layout_height="40dp"
+        android:layout_marginTop="16dp"
+        app:cardBackgroundColor="#005596"
+        app:cardCornerRadius="10dp"
+        app:cardElevation="0dp"
+        app:layout_constraintEnd_toStartOf="@+id/MinimumOrder"
+        app:layout_constraintHorizontal_bias="0.5"
+        app:layout_constraintStart_toEndOf="@+id/AllBtn"
+        app:layout_constraintTop_toBottomOf="@+id/searchView">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <TextView
+                android:id="@+id/depleted"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Whatsapp"
+                android:textColor="#fff"
+                android:textSize="9sp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </androidx.cardview.widget.CardView>
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/MinimumOrder"
+        android:layout_width="80dp"
+        android:layout_height="40dp"
+        android:layout_marginTop="16dp"
+        app:cardBackgroundColor="#005596"
+        app:cardCornerRadius="10dp"
+        app:cardElevation="0dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.5"
+        app:layout_constraintStart_toEndOf="@+id/DepletedItem"
+        app:layout_constraintTop_toBottomOf="@+id/searchView">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <TextView
+                android:id="@+id/minimumOrder"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Purchased"
+                android:textColor="#fff"
+                android:textSize="9sp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+    </androidx.cardview.widget.CardView>
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardView7"
+        android:layout_width="0dp"
+        android:layout_height="2dp"
+        android:layout_marginTop="16dp"
+        app:cardBackgroundColor="#0071c1"
+        app:layout_constraintEnd_toEndOf="@+id/MinimumOrder"
+        app:layout_constraintStart_toStartOf="@+id/AllBtn"
+        app:layout_constraintTop_toBottomOf="@+id/DepletedItem" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/datailedGoodsReceivenNoteRecyclerView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="16dp"
+        app:layout_constraintBottom_toTopOf="@+id/submitPurchaseRequisition"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@+id/cardView7" />
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/submitPurchaseRequisition"
+        android:layout_width="0dp"
+        android:layout_height="40dp"
+        app:cardBackgroundColor="#0071c1"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <TextView
+                android:id="@+id/totalBudgetValue"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0.00"
+                android:textColor="#fff"
+                android:textSize="11sp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <androidx.cardview.widget.CardView
+                android:id="@+id/ClearSelectedItems"
+                android:layout_width="50dp"
+                android:layout_height="30dp"
+                android:layout_marginStart="16dp"
+                app:cardBackgroundColor="@color/variance_negative"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent">
+
+                <androidx.constraintlayout.widget.ConstraintLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent">
+
+                    <TextView
+                        android:id="@+id/textView47"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Clear"
+                        android:textColor="#fff"
+                        android:textSize="10sp"
+                        app:layout_constraintBottom_toBottomOf="parent"
+                        app:layout_constraintEnd_toEndOf="parent"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintTop_toTopOf="parent" />
+                </androidx.constraintlayout.widget.ConstraintLayout>
+            </androidx.cardview.widget.CardView>
+
+            <TextView
+                android:id="@+id/textView49"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                android:text="No. of Deselected Items:"
+                android:textColor="#fff"
+                android:textSize="9sp"
+                app:layout_constraintBottom_toBottomOf="@+id/noItemsSelected"
+                app:layout_constraintEnd_toStartOf="@+id/noItemsSelected"
+                app:layout_constraintTop_toTopOf="@+id/noItemsSelected" />
+
+            <TextView
+                android:id="@+id/noItemsSelected"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="16dp"
+                android:text="0"
+                android:textColor="#fff"
+                android:textSize="11sp"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </androidx.cardview.widget.CardView>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

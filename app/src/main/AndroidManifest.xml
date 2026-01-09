@@ -25,6 +25,12 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Zed">
         <activity
+            android:name=".detailed_goods_received_note"
+            android:exported="false" />
+        <activity
+            android:name=".goods_received_note"
+            android:exported="false" />
+        <activity
             android:name=".purchase_requisition"
             android:exported="false" />
         <activity

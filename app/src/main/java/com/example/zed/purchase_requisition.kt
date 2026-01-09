@@ -12,6 +12,7 @@ import androidx.appcompat.widget.SearchView
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -73,7 +74,7 @@ class purchase_requisition : AppCompatActivity() {
         binding.ClearSelectedItems.setOnClickListener {
             adapter.clearAllSelections()
         }
-
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
         binding.barcodeScanner.setOnClickListener {
             val scannerDialog = BarcodeScannerDialogFragment { scannedBarcode ->
                 findAndHighlightItem(scannedBarcode)
