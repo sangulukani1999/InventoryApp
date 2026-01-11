@@ -1,15 +1,16 @@
 package com.example.zed
 
+import android.content.Intent
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
-import com.example.zed.databinding.GoodsReceivedNoteItemBinding // Ensure this matches your file name
+import com.example.zed.databinding.GoodsReceivedNoteItemBinding
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// Data class to hold all necessary information for one item
+// Data class remains the same
 data class GoodsReceivedItem(
     val requisitionCode: String,
     val user: String,
@@ -17,7 +18,7 @@ data class GoodsReceivedItem(
     val itemCount: Int,
     val totalValue: Double,
     val firstProductName: String,
-    val imageUrl: String? // Added to hold the image URL
+    val imageUrl: String?
 )
 
 class GoodsReceivedAdapter(
@@ -39,13 +40,11 @@ class GoodsReceivedAdapter(
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val item = items[position]
+        val context = holder.itemView.context
 
-        // --- Bind data to the correct views from your goods_received_note_item.xml ---
-
-        // 1. Set the text fields
+        // --- Bind data ---
         holder.binding.goodsReceivedNoteCode.text = item.requisitionCode
 
-        // 2. Format the date and set it
         item.timestamp?.let {
             val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             holder.binding.goodsReceivedNoteDate.text = sdf.format(it)
@@ -53,7 +52,13 @@ class GoodsReceivedAdapter(
             holder.binding.goodsReceivedNoteDate.text = "No Date"
         }
 
-
-        // The "GRN" status card is static, so no dynamic binding is needed for it.
+        // --- ✅ ADD CLICK LISTENER ---
+        holder.itemView.setOnClickListener {
+            val intent = Intent(context, detailed_goods_received_note::class.java).apply {
+                // Pass the unique code to the next activity
+                putExtra("REQUISITION_CODE", item.requisitionCode)
+            }
+            context.startActivity(intent)
+        }
     }
 }

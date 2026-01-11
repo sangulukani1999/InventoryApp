@@ -31,12 +31,31 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/top_border_frame">
 
+
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:padding="12dp">
 
             <!-- Checkbox on the far left -->
+            <EditText
+                android:id="@+id/qty"
+                android:layout_width="0dp"
+                android:layout_height="24dp"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/spinner_border"
+                android:ems="10"
+                android:inputType="number"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:hint="Cost Price"
+                android:textColorHint="#0071c1"
+                android:textColor="#0071c1"
+                android:textSize="10sp"
+                app:layout_constraintEnd_toEndOf="@+id/quantityInput"
+                app:layout_constraintStart_toStartOf="@+id/unit_cost_label"
+                app:layout_constraintTop_toBottomOf="@+id/costValue" />
+
             <CheckBox
                 android:id="@+id/item_checkbox"
                 android:layout_width="wrap_content"
@@ -51,7 +70,6 @@
                 android:id="@+id/product_image"
                 android:layout_width="60dp"
                 android:layout_height="60dp"
-                android:layout_marginStart="12dp"
                 android:scaleType="centerCrop"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintStart_toEndOf="@id/item_checkbox"
@@ -111,9 +129,9 @@
             <EditText
                 android:id="@+id/quantityInput"
                 android:layout_width="60dp"
-                android:layout_height="48dp"
+                android:layout_height="24dp"
                 android:layout_marginStart="8dp"
-                android:layout_marginTop="8dp"
+                android:layout_marginTop="6dp"
                 android:background="#2196F3"
                 android:ems="10"
                 android:gravity="center"
@@ -121,9 +139,9 @@
                 android:paddingHorizontal="8dp"
                 android:text="1"
                 android:textColor="#fff"
-                android:textSize="11sp"
+                android:textSize="10sp"
                 app:layout_constraintStart_toEndOf="@id/quantity_label"
-                app:layout_constraintTop_toBottomOf="@id/unit_cost_label" />
+                app:layout_constraintTop_toBottomOf="@+id/qty" />
 
 
             <!-- Item Total (Calculated) -->
@@ -136,28 +154,22 @@
                 android:textSize="11sp"
                 android:textStyle="bold"
                 app:layout_constraintBottom_toBottomOf="@id/quantityInput"
-                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintEnd_toEndOf="@+id/goodsReceivedIndicator"
                 app:layout_constraintTop_toBottomOf="@+id/quantityInput"
                 tools:text="$12.99" />
 
             <EditText
-                android:id="@+id/editTextDate"
+                android:id="@+id/expiryDate"
                 android:layout_width="67dp"
                 android:layout_height="34dp"
                 android:ems="10"
+                android:hint="Expirely Date"
                 android:inputType="date"
+                android:textColor="#0071c1"
+                android:textColorHint="#0071c1"
+                android:textSize="10sp"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintTop_toBottomOf="@+id/product_name" />
-
-            <androidx.cardview.widget.CardView
-                android:id="@+id/goodsAvailabilityIndicator"
-                android:layout_width="20dp"
-                android:layout_height="20dp"
-                android:layout_marginEnd="8dp"
-                app:cardBackgroundColor="@color/variance_negative"
-                app:layout_constraintBottom_toBottomOf="@+id/goodsDateIndicator"
-                app:layout_constraintEnd_toStartOf="@+id/goodsDateIndicator"
-                app:layout_constraintTop_toTopOf="@+id/goodsDateIndicator" />
 
             <androidx.cardview.widget.CardView
                 android:id="@+id/goodsDateIndicator"
@@ -177,8 +189,8 @@
                 android:layout_height="20dp"
                 app:cardBackgroundColor="@color/variance_negative"
                 app:layout_constraintBottom_toTopOf="@+id/individualTotalValue"
-                app:layout_constraintEnd_toEndOf="@+id/editTextDate"
-                app:layout_constraintTop_toBottomOf="@+id/editTextDate">
+                app:layout_constraintEnd_toEndOf="@+id/expiryDate"
+                app:layout_constraintTop_toBottomOf="@+id/expiryDate">
 
             </androidx.cardview.widget.CardView>
 

@@ -26,9 +26,9 @@
                 android:id="@+id/reload_btn"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
                 android:layout_marginEnd="16dp"
                 android:background="@android:color/transparent"
+                app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintTop_toTopOf="parent"
                 app:srcCompat="@drawable/sync" />
@@ -60,13 +60,13 @@
 
             <ImageButton
                 android:id="@+id/backBtnPhysicalInventory"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_width="25dp"
+                android:layout_height="10dp"
                 android:layout_marginStart="16dp"
                 android:background="@android:color/transparent"
-                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintBottom_toBottomOf="@+id/imageSearchIcon"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintTop_toTopOf="@+id/imageSearchIcon"
                 app:srcCompat="@drawable/back_icon" />
 
             <ImageView
@@ -83,9 +83,10 @@
                 android:id="@+id/imageSearchIcon"
                 android:layout_width="35dp"
                 android:layout_height="35dp"
+                app:layout_constraintBottom_toBottomOf="@+id/textView51"
                 app:layout_constraintEnd_toStartOf="@+id/textView51"
                 app:layout_constraintStart_toEndOf="@+id/backBtnPhysicalInventory"
-                app:layout_constraintTop_toTopOf="@+id/reload_btn"
+                app:layout_constraintTop_toTopOf="@+id/textView51"
                 app:srcCompat="@drawable/camera_search" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>
@@ -205,31 +206,21 @@
 
     </androidx.cardview.widget.CardView>
 
-    <androidx.cardview.widget.CardView
-        android:id="@+id/cardView7"
-        android:layout_width="0dp"
-        android:layout_height="2dp"
-        android:layout_marginTop="16dp"
-        app:cardBackgroundColor="#0071c1"
-        app:layout_constraintEnd_toEndOf="@+id/MinimumOrder"
-        app:layout_constraintStart_toStartOf="@+id/AllBtn"
-        app:layout_constraintTop_toBottomOf="@+id/DepletedItem" />
-
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/datailedGoodsReceivenNoteRecyclerView"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_marginStart="16dp"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="8dp"
         android:layout_marginEnd="16dp"
-        android:layout_marginBottom="16dp"
-        app:layout_constraintBottom_toTopOf="@+id/submitPurchaseRequisition"
+        android:layout_marginBottom="8dp"
+        app:layout_constraintBottom_toTopOf="@+id/goods_received_note_container"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="@+id/cardView7" />
+        app:layout_constraintTop_toBottomOf="@+id/DepletedItem" />
 
     <androidx.cardview.widget.CardView
-        android:id="@+id/submitPurchaseRequisition"
+        android:id="@+id/goods_received_note_container"
         android:layout_width="0dp"
         android:layout_height="40dp"
         app:cardBackgroundColor="#0071c1"
