@@ -22,7 +22,6 @@ import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport
-import com.google.api.client.http.FileContent
 import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
@@ -164,7 +163,7 @@ class MyBottomStockSheet(
         productName = view.findViewById(R.id.productName)
         barcode = view.findViewById(R.id.barcode)
         category = view.findViewById(R.id.category)
-        qty = view.findViewById(R.id.qty)
+        qty = view.findViewById(R.id.cost_price)
         unitCost = view.findViewById(R.id.unitCost)
         quantity_display = view.findViewById(R.id.quantity_display)
         unitContainer = view.findViewById(R.id.unitContainer)

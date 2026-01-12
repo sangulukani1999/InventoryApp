@@ -51,10 +51,10 @@
             android:textColor="#0071c1"
             android:textColorHint="#0071c1"
             android:textSize="9sp"
-            app:layout_constraintBottom_toBottomOf="@+id/qty"
+            app:layout_constraintBottom_toBottomOf="@+id/cost_price"
             app:layout_constraintEnd_toEndOf="@+id/add_category"
             app:layout_constraintStart_toStartOf="@+id/add_category"
-            app:layout_constraintTop_toTopOf="@+id/qty" />
+            app:layout_constraintTop_toTopOf="@+id/cost_price" />
 
         <EditText
             android:id="@+id/productName"
@@ -74,7 +74,7 @@
             app:layout_constraintTop_toBottomOf="@+id/barcodeScannerEdit" />
 
         <EditText
-            android:id="@+id/qty"
+            android:id="@+id/cost_price"
             android:layout_width="0dp"
             android:layout_height="24dp"
             android:layout_marginTop="8dp"
@@ -98,7 +98,7 @@
             android:layout_height="24dp"
             app:layout_constraintEnd_toEndOf="@+id/textView24"
             app:layout_constraintStart_toStartOf="@+id/textView40"
-            app:layout_constraintTop_toTopOf="@+id/qty">
+            app:layout_constraintTop_toTopOf="@+id/cost_price">
 
             <Spinner
                 android:id="@+id/unit_of_measure_populates"

@@ -39,13 +39,13 @@
 
             <!-- Checkbox on the far left -->
             <EditText
-                android:id="@+id/qty"
+                android:id="@+id/cost_price"
                 android:layout_width="0dp"
                 android:layout_height="24dp"
                 android:layout_marginTop="6dp"
                 android:background="@drawable/spinner_border"
                 android:ems="10"
-                android:inputType="number"
+                android:inputType="numberDecimal"
                 android:paddingStart="8dp"
                 android:paddingEnd="8dp"
                 android:hint="Cost Price"
@@ -141,7 +141,7 @@
                 android:textColor="#fff"
                 android:textSize="10sp"
                 app:layout_constraintStart_toEndOf="@id/quantity_label"
-                app:layout_constraintTop_toBottomOf="@+id/qty" />
+                app:layout_constraintTop_toBottomOf="@+id/cost_price" />
 
 
             <!-- Item Total (Calculated) -->
@@ -172,7 +172,7 @@
                 app:layout_constraintTop_toBottomOf="@+id/product_name" />
 
             <androidx.cardview.widget.CardView
-                android:id="@+id/goodsDateIndicator"
+                android:id="@+id/goodPurchasedIndicator"
                 android:layout_width="20dp"
                 android:layout_height="20dp"
                 android:layout_marginEnd="8dp"

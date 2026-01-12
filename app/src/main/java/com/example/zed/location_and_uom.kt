@@ -240,7 +240,7 @@ class location_and_uom : Fragment() {
         unit_of_measure_populates = view.findViewById(R.id.unit_of_measure_populates)
         unitContainer = view.findViewById(R.id.unitContainer)
         btnAddUnit = view.findViewById(R.id.btnAddUnit)
-        qty = view.findViewById(R.id.qty)
+        qty = view.findViewById(R.id.cost_price)
         quantity_display = view.findViewById(R.id.quantity_display)
         btnSaveChanges = view.findViewById(R.id.btnSaveChanges) // Correct ID
 

@@ -43,7 +43,7 @@
         </androidx.constraintlayout.widget.ConstraintLayout>
 
         <EditText
-            android:id="@+id/qty"
+            android:id="@+id/cost_price"
             android:layout_width="0dp"
             android:layout_height="24dp"
             android:layout_marginStart="8dp"
@@ -73,9 +73,9 @@
             android:text="QTY Display"
             android:textColor="#0071c1"
             android:textSize="11sp"
-            app:layout_constraintBottom_toBottomOf="@+id/qty"
+            app:layout_constraintBottom_toBottomOf="@+id/cost_price"
             app:layout_constraintEnd_toEndOf="@+id/mainScroll"
-            app:layout_constraintTop_toTopOf="@+id/qty" />
+            app:layout_constraintTop_toTopOf="@+id/cost_price" />
 
         <androidx.core.widget.NestedScrollView
             android:id="@+id/mainScroll"
@@ -89,7 +89,7 @@
             app:layout_constraintBottom_toTopOf="@+id/cardView3"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/qty">
+            app:layout_constraintTop_toBottomOf="@+id/cost_price">
 
             <LinearLayout
                 android:layout_width="match_parent"

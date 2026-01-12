@@ -111,14 +111,14 @@
         app:layout_constraintTop_toBottomOf="@+id/cardView" />
 
     <androidx.cardview.widget.CardView
-        android:id="@+id/AllBtn"
+        android:id="@+id/pdf"
         android:layout_width="69dp"
         android:layout_height="40dp"
         android:layout_marginTop="16dp"
         app:cardBackgroundColor="#005596"
         app:cardCornerRadius="10dp"
         app:cardElevation="0dp"
-        app:layout_constraintEnd_toStartOf="@+id/DepletedItem"
+        app:layout_constraintEnd_toStartOf="@+id/purchase"
         app:layout_constraintHorizontal_bias="0.5"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/searchView">
@@ -143,39 +143,7 @@
     </androidx.cardview.widget.CardView>
 
     <androidx.cardview.widget.CardView
-        android:id="@+id/DepletedItem"
-        android:layout_width="60dp"
-        android:layout_height="40dp"
-        android:layout_marginTop="16dp"
-        app:cardBackgroundColor="#005596"
-        app:cardCornerRadius="10dp"
-        app:cardElevation="0dp"
-        app:layout_constraintEnd_toStartOf="@+id/MinimumOrder"
-        app:layout_constraintHorizontal_bias="0.5"
-        app:layout_constraintStart_toEndOf="@+id/AllBtn"
-        app:layout_constraintTop_toBottomOf="@+id/searchView">
-
-        <androidx.constraintlayout.widget.ConstraintLayout
-            android:layout_width="match_parent"
-            android:layout_height="match_parent">
-
-            <TextView
-                android:id="@+id/depleted"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Whatsapp"
-                android:textColor="#fff"
-                android:textSize="9sp"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
-        </androidx.constraintlayout.widget.ConstraintLayout>
-
-    </androidx.cardview.widget.CardView>
-
-    <androidx.cardview.widget.CardView
-        android:id="@+id/MinimumOrder"
+        android:id="@+id/purchase"
         android:layout_width="80dp"
         android:layout_height="40dp"
         android:layout_marginTop="16dp"
@@ -184,7 +152,7 @@
         app:cardElevation="0dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.5"
-        app:layout_constraintStart_toEndOf="@+id/DepletedItem"
+        app:layout_constraintStart_toEndOf="@+id/pdf"
         app:layout_constraintTop_toBottomOf="@+id/searchView">
 
         <androidx.constraintlayout.widget.ConstraintLayout
@@ -211,13 +179,11 @@
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_marginStart="16dp"
-        android:layout_marginTop="8dp"
         android:layout_marginEnd="16dp"
-        android:layout_marginBottom="8dp"
         app:layout_constraintBottom_toTopOf="@+id/goods_received_note_container"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/DepletedItem" />
+        app:layout_constraintTop_toBottomOf="@+id/pdf" />
 
     <androidx.cardview.widget.CardView
         android:id="@+id/goods_received_note_container"
@@ -236,12 +202,12 @@
                 android:id="@+id/totalBudgetValue"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="32dp"
                 android:text="0.00"
                 android:textColor="#fff"
                 android:textSize="11sp"
                 app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintStart_toEndOf="@+id/ClearSelectedItems"
                 app:layout_constraintTop_toTopOf="parent" />
 
             <androidx.cardview.widget.CardView
