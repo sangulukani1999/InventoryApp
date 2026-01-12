@@ -112,7 +112,7 @@
 
     <androidx.cardview.widget.CardView
         android:id="@+id/pdf"
-        android:layout_width="69dp"
+        android:layout_width="100dp"
         android:layout_height="40dp"
         android:layout_marginTop="16dp"
         app:cardBackgroundColor="#005596"

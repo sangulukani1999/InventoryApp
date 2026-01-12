@@ -4,6 +4,7 @@ import DetailedGoodsReceivedProduct
 import android.app.AlertDialog
 import android.app.ProgressDialog
 import android.content.ActivityNotFoundException
+import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
@@ -12,6 +13,7 @@ import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -34,6 +36,8 @@ import com.google.api.services.sheets.v4.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
 import java.math.BigDecimal
 import java.text.NumberFormat
@@ -327,10 +331,25 @@ class detailed_goods_received_note : AppCompatActivity() {
                         binding.purchase.isEnabled = false
                         binding.purchase.cardElevation = 0f
                         binding.purchase.setCardBackgroundColor(ContextCompat.getColor(this@detailed_goods_received_note, R.color.variance_zero))
+
+                        // ✅ ADD THIS LINE TO DISABLE THE CLEAR BUTTON
+                        binding.ClearSelectedItems.isEnabled = false
+
+                        // ✅ Change PDF button text to "Generate GRN"
+                        binding.textView27.text = "Generate GRN"
+
+
+
                     } else {
                         binding.purchase.isEnabled = true
                         binding.purchase.cardElevation = 2f
                         binding.purchase.setCardBackgroundColor(ContextCompat.getColor(this@detailed_goods_received_note, R.color.nav_bar_color))
+
+                        // ✅ ADD THIS LINE TO ENABLE THE CLEAR BUTTON
+                        binding.ClearSelectedItems.isEnabled = true
+
+                        binding.textView27.text = "Requisition"
+
                     }
                 }
 
@@ -477,9 +496,210 @@ class detailed_goods_received_note : AppCompatActivity() {
         binding.noItemsSelected.text = deselectedCount.toString()
     }
 
-    private fun generatePdf(items: List<DetailedGoodsReceivedProduct>, requisitionCode: String) { /* Omitted for brevity */ }
-    private fun savePdfToDownloads(document: PdfDocument, requisitionCode: String) { /* Omitted for brevity */ }
-    private fun openPdf(uri: Uri) { /* Omitted for brevity */ }
+    private fun generatePdf(items: List<DetailedGoodsReceivedProduct>, requisitionCode: String) {
+        val dialog = ProgressDialog(this).apply {
+            setMessage("Generating PDF...")
+            setCancelable(false)
+            show()
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            var receivers = "N/A"
+            val pdfTitle = if (isRequisitionAlreadyPurchased) "GOODS RECEIVED NOTE" else "PURCHASE REQUISITION"
+            val fileName = "${pdfTitle.replace(" ", "_")}_$requisitionCode.pdf"
+
+            try {
+                if (isRequisitionAlreadyPurchased) {
+                    val sheetsService = getSheetsService(googleAccount)
+                    val spreadsheetId = findSheetIdByName(getDriveService(googleAccount), "nia-bridge data")
+                        ?: throw IOException("Spreadsheet 'nia-bridge data' not found.")
+
+                    val purchaseSheetName = "purchased goods sheet"
+                    val range = "$purchaseSheetName!G:K"
+
+                    val response = sheetsService.spreadsheets().values().get(spreadsheetId, range).execute()
+                    val uniqueReceivers = response.getValues()?.drop(1)?.mapNotNull { row ->
+                        val receivedBy = if (row.size > 0) row[0]?.toString() else null
+                        val reqCodeInSheet = if (row.size > 4) row[4]?.toString() else null
+
+                        if (reqCodeInSheet == requisitionCode && !receivedBy.isNullOrBlank()) {
+                            receivedBy.trim()
+                        } else {
+                            null
+                        }
+                    }?.toSet()
+
+                    if (!uniqueReceivers.isNullOrEmpty()) {
+                        receivers = uniqueReceivers.joinToString(", ")
+                    }
+                }
+
+                val document = PdfDocument()
+                val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
+                val page = document.startPage(pageInfo)
+                val canvas: Canvas = page.canvas
+
+                val titlePaint = Paint().apply {
+                    color = Color.BLACK
+                    textSize = 16f
+                    isFakeBoldText = true
+                    textAlign = Paint.Align.CENTER
+                }
+                val headerPaint = Paint().apply {
+                    color = Color.BLACK
+                    textSize = 8f
+                    isFakeBoldText = true
+                }
+                val textPaint = Paint().apply {
+                    color = Color.BLACK
+                    textSize = 8f
+                }
+
+                val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+                val printedDate = dateFormat.format(Date())
+
+                canvas.drawText(pdfTitle, (pageInfo.pageWidth / 2).toFloat(), 40f, titlePaint)
+                canvas.drawText("Requisition Code: $requisitionCode", 40f, 60f, textPaint)
+                canvas.drawText("Printed on: $printedDate", 40f, 70f, textPaint)
+
+                if (isRequisitionAlreadyPurchased) {
+                    canvas.drawText("Received By: $receivers", 40f, 80f, textPaint)
+                }
+
+                var yPos = 110f
+                canvas.drawLine(38f, yPos - 12, pageInfo.pageWidth - 38f, yPos - 12, headerPaint)
+                canvas.drawText("PRODUCT NAME", 40f, yPos, headerPaint)
+                canvas.drawText("QTY", 380f, yPos, headerPaint)
+                canvas.drawText("UNIT COST", 430f, yPos, headerPaint)
+                canvas.drawText("TOTAL COST", 500f, yPos, headerPaint)
+                canvas.drawLine(38f, yPos + 4, pageInfo.pageWidth - 38f, yPos + 4, headerPaint)
+                yPos += 18
+
+                var subtotal = BigDecimal.ZERO
+                for (item in items) {
+                    val totalCost = (item.unitCost.toBigDecimalOrNull() ?: BigDecimal.ZERO) * item.quantity.toBigDecimal()
+                    subtotal += totalCost
+                    val productName = item.name ?: "Unknown"
+                    val textWidth = textPaint.measureText(productName)
+                    if (textWidth > 320) {
+                        var breakPoint = productName.length / 2
+                        for(i in productName.length / 2 downTo 0){
+                            if(productName[i] == ' '){
+                                breakPoint = i
+                                break
+                            }
+                        }
+                        val line1 = productName.substring(0, breakPoint)
+                        val line2 = productName.substring(breakPoint).trim()
+                        canvas.drawText(line1, 40f, yPos, textPaint)
+                        canvas.drawText(line2, 40f, yPos + 10, textPaint)
+                        yPos += 10
+                    } else {
+                        canvas.drawText(productName, 40f, yPos, textPaint)
+                    }
+
+                    canvas.drawText(item.quantity.toString(), 380f, yPos, textPaint)
+                    canvas.drawText("K${item.unitCost}", 430f, yPos, textPaint)
+                    canvas.drawText("K${"%.2f".format(totalCost)}", 500f, yPos, textPaint)
+                    yPos += 14
+                }
+
+                canvas.drawLine(380f, yPos, pageInfo.pageWidth - 38f, yPos, headerPaint)
+                yPos += 14
+                canvas.drawText("SUBTOTAL:", 430f, yPos, headerPaint)
+                canvas.drawText("K${"%.2f".format(subtotal)}", 500f, yPos, textPaint)
+
+                document.finishPage(page)
+
+                withContext(Dispatchers.Main) {
+                    savePdfToDownloads(document, fileName)
+                }
+
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Log.e(TAG, "Error generating PDF", e)
+                    Toast.makeText(this@detailed_goods_received_note, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            } finally {
+                withContext(Dispatchers.Main) {
+                    if (dialog.isShowing) dialog.dismiss()
+                }
+            }
+        }
+    }
+
+    // In detailed_goods_received_note.kt
+
+    // In detailed_goods_received_note.kt
+
+    // ✅ --- NEW, CORRECTED PDF SAVING LOGIC (Using MediaStore) ---
+    private fun savePdfToDownloads(document: PdfDocument, fileName: String) {
+        // ContentResolver is the modern way to interact with shared storage
+        val resolver = contentResolver
+
+        // ContentValues will hold the metadata for our new file
+        val contentValues = ContentValues().apply {
+            // Set the file name that will appear in the Downloads folder
+            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+
+            // Set the file type
+            put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+
+            // Specify that the file should be placed in the Downloads sub-directory
+            // This requires Android 10 (API 29) or higher
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            }
+        }
+
+        var pdfUri: Uri? = null
+
+        try {
+            // Use the ContentResolver to insert a new entry into the MediaStore.
+            // This creates a placeholder for our file and returns a URI to it.
+            pdfUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+
+            if (pdfUri == null) {
+                throw IOException("Failed to create new MediaStore entry.")
+            }
+
+            // Open an output stream using the URI we just got
+            resolver.openOutputStream(pdfUri)?.use { outputStream ->
+                // Write the PDF document content to the output stream
+                document.writeTo(outputStream)
+            }
+
+            // Close the document now that it's written
+            document.close()
+
+            Toast.makeText(this, "PDF saved to Downloads folder", Toast.LENGTH_LONG).show()
+
+            // Open the PDF using the URI
+            openPdf(pdfUri)
+
+        } catch (e: Exception) {
+            Log.e("PDF", "Error saving PDF", e)
+            Toast.makeText(this, "Error saving PDF: ${e.message}", Toast.LENGTH_LONG).show()
+
+            // If there was an error, try to delete the incomplete MediaStore entry
+            pdfUri?.let { resolver.delete(it, null, null) }
+
+            // Always ensure the document is closed
+            document.close()
+        }
+    }
+
+    private fun openPdf(uri: Uri) {
+        val intent = Intent(Intent.ACTION_VIEW)
+        intent.setDataAndType(uri, "application/pdf")
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        try {
+            startActivity(intent)
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(this, "No application found to open PDF", Toast.LENGTH_SHORT).show()
+        }
+    }
+
 
     private fun normalize(value: Any?): String {
         return value?.toString()?.trim()?.removeSuffix(".0") ?: ""
@@ -525,4 +745,5 @@ class detailed_goods_received_note : AppCompatActivity() {
         return Sheets.Builder(GoogleNetHttpTransport.newTrustedTransport(), GsonFactory.getDefaultInstance(), credential)
             .setApplicationName("Nia Bridge App").build()
     }
+
 }
