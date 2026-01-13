@@ -1,13 +1,14 @@
 package com.example.zed
 
 import android.app.ProgressDialog
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
-import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -21,9 +22,20 @@ import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
 import com.google.api.services.sheets.v4.Sheets
 import com.google.api.services.sheets.v4.SheetsScopes
+import com.google.api.services.sheets.v4.model.BatchUpdateSpreadsheetRequest
+import com.google.api.services.sheets.v4.model.DeleteDimensionRequest
+import com.google.api.services.sheets.v4.model.DimensionRange
+import com.google.api.services.sheets.v4.model.Request
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.OkHttpClient
+import okhttp3.Response
+import org.json.JSONArray
+import org.json.JSONException
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -31,11 +43,9 @@ class goods_received_note : AppCompatActivity() {
 
     private lateinit var binding: ActivityGoodsReceivedNoteBinding
     private lateinit var googleAccount: GoogleSignInAccount
-
-    // Master list to hold all fetched items
     private val allGoodsReceivedItems = mutableListOf<GoodsReceivedItem>()
+    private var isAdminUser: Boolean = false // ✅ Flag to store user role
 
-    // Enum for filter types
     private enum class FilterType { ALL, TODAY, LAST_7_DAYS, OTHERS }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,7 +53,6 @@ class goods_received_note : AppCompatActivity() {
         binding = ActivityGoodsReceivedNoteBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Set system bar colors
         setupSystemBars()
 
         val account = GoogleSignIn.getLastSignedInAccount(this)
@@ -57,38 +66,111 @@ class goods_received_note : AppCompatActivity() {
         setupRecyclerView()
         setupFilterButtons()
 
-        // Fetch data from the sheet
-        fetchGoodsReceivedData()
+        // First, check the user's role
+        checkUserRole(googleAccount.email ?: "") { isAdmin, _, _ ->
+            this.isAdminUser = isAdmin
+            // After role is confirmed, fetch the data
+            fetchGoodsReceivedData()
+        }
     }
 
     private fun setupSystemBars() {
-        // Top Status Bar: Blue background, White icons
         window.statusBarColor = ContextCompat.getColor(this, R.color.selected_item_color)
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
-
-        // Bottom Navigation Bar: White background, Dark icons
         window.navigationBarColor = ContextCompat.getColor(this, R.color.white)
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = true
     }
 
     private fun setupRecyclerView() {
         binding.goodsRecievedNoteRecyclerView.layoutManager = LinearLayoutManager(this)
-        // Adapter will be set after data is fetched and filtered
     }
 
     private fun setupFilterButtons() {
         binding.AllBtn.setOnClickListener { applyFilter(FilterType.ALL) }
-        binding.DepletedItem.setOnClickListener { applyFilter(FilterType.TODAY) } // Renamed to "Today"
-        binding.MinimumOrder.setOnClickListener { applyFilter(FilterType.LAST_7_DAYS) } // "Last 7 days"
-        binding.withinMonthExpirely.setOnClickListener { applyFilter(FilterType.OTHERS) } // "Others"
-
-        // Set initial active state
+        binding.DepletedItem.setOnClickListener { applyFilter(FilterType.TODAY) }
+        binding.MinimumOrder.setOnClickListener { applyFilter(FilterType.LAST_7_DAYS) }
+        binding.withinMonthExpirely.setOnClickListener { applyFilter(FilterType.OTHERS) }
         updateActiveButton(binding.AllBtn)
     }
 
+    // ✅ --- START: DELETION LOGIC ---
+    private fun handleDeleteRequisition(requisitionCode: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Delete Requisition")
+            .setMessage("Are you sure you want to permanently delete all items for requisition code '$requisitionCode'?")
+            .setPositiveButton("Delete") { _, _ ->
+                performDeleteOnSheet(requisitionCode)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun performDeleteOnSheet(requisitionCode: String) {
+        val progressDialog = ProgressDialog(this).apply {
+            setMessage("Deleting requisition...")
+            setCancelable(false)
+            show()
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val sheetsService = getSheetsService(googleAccount)
+                val spreadsheetId = findSheetIdByName(getDriveService(googleAccount), "nia-bridge data")
+                    ?: throw Exception("Spreadsheet not found.")
+
+                val sheetName = "purchase_requisition_sheet"
+                val sheetId = getSheetIdByTitle(sheetsService, spreadsheetId, sheetName)
+                    ?: throw Exception("Sheet '$sheetName' not found.")
+
+                val range = "$sheetName!C:C"
+                val response = sheetsService.spreadsheets().values().get(spreadsheetId, range).execute()
+                val requests = mutableListOf<Request>()
+                val rowsToDelete = response.getValues()
+                    ?.mapIndexedNotNull { index, row ->
+                        if (row.getOrNull(0)?.toString() == requisitionCode) index + 1 else null
+                    }
+
+                if (!rowsToDelete.isNullOrEmpty()) {
+                    rowsToDelete.sortedDescending().forEach { rowIndex ->
+                        val deleteRequest = DeleteDimensionRequest()
+                            .setRange(
+                                DimensionRange()
+                                    .setSheetId(sheetId)
+                                    .setDimension("ROWS")
+                                    .setStartIndex(rowIndex -1) // Adjust for 0-based index in API request
+                                    .setEndIndex(rowIndex)
+                            )
+                        requests.add(Request().setDeleteDimension(deleteRequest))
+                    }
+                    val batchUpdateRequest = BatchUpdateSpreadsheetRequest().setRequests(requests)
+                    sheetsService.spreadsheets().batchUpdate(spreadsheetId, batchUpdateRequest).execute()
+                }
+
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    Toast.makeText(this@goods_received_note, "Requisition deleted.", Toast.LENGTH_SHORT).show()
+                    fetchGoodsReceivedData()
+                }
+
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    Log.e("DeleteRequisition", "Error deleting requisition", e)
+                    Toast.makeText(this@goods_received_note, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun getSheetIdByTitle(sheetsService: Sheets, spreadsheetId: String, title: String): Int? {
+        val spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).setFields("sheets.properties").execute()
+        return spreadsheet.sheets.firstOrNull { it.properties.title == title }?.properties?.sheetId
+    }
+    // ✅ --- END: DELETION LOGIC ---
+
     private fun fetchGoodsReceivedData() {
         val progressDialog = ProgressDialog(this).apply {
-            setMessage("Fetching received goods...")
+            setMessage("Fetching goods...")
             setCancelable(false)
             show()
         }
@@ -100,63 +182,58 @@ class goods_received_note : AppCompatActivity() {
                 val spreadsheetId = findSheetIdByName(driveService, "nia-bridge data")
                     ?: throw Exception("Spreadsheet 'nia-bridge data' not found.")
 
-                // We need to fetch the image URL from the Products sheet.
-                // First, fetch all products to create a map of barcode -> imageUrl
+                // This logic remains correct from the previous step
                 val productsResponse = sheetsService.spreadsheets().values().get(spreadsheetId, "Products!C2:D").execute()
-                val productValues = productsResponse.getValues()
-                val imageUrlMap = productValues?.associate { row ->
-                    val barcode = row.getOrNull(1)?.toString()
-                    val imageUrl = row.getOrNull(0)?.toString()
-                    barcode to imageUrl
-                } ?: emptyMap()
+                val imageUrlMap = productsResponse.getValues()?.associate { row -> row.getOrNull(1)?.toString() to row.getOrNull(0)?.toString() } ?: emptyMap()
 
-                val range = "purchase_requisition_sheet!A2:I" // Fetch all relevant columns
-                val response = sheetsService.spreadsheets().values().get(spreadsheetId, range).execute()
-                val values = response.getValues()
+                val requisitionRange = "purchase_requisition_sheet!A2:I"
+                val requisitionResponse = sheetsService.spreadsheets().values().get(spreadsheetId, requisitionRange).execute()
+                val requisitionValues = requisitionResponse.getValues()
 
-                if (values.isNullOrEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@goods_received_note, "No goods received data found.", Toast.LENGTH_SHORT).show()
-                    }
+                if (requisitionValues.isNullOrEmpty()) {
+                    withContext(Dispatchers.Main) { Toast.makeText(this@goods_received_note, "No requisition data found.", Toast.LENGTH_SHORT).show() }
+                    progressDialog.dismiss()
                     return@launch
                 }
 
+                val purchaseSheetRange = "purchased goods sheet!G2:K"
+                val purchaseResponse = sheetsService.spreadsheets().values().get(spreadsheetId, purchaseSheetRange).execute()
+                val purchaseData = purchaseResponse.getValues() ?: emptyList()
+                val purchasedRequisitions = purchaseData.groupBy { it.getOrNull(4)?.toString() }
+
                 val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
-                // Group rows by "Purchase Requisition code" (column C, index 2)
-                val groupedData = values.groupBy { row ->
-                    row.getOrNull(2)?.toString() ?: "UNKNOWN_CODE"
-                }.map { (requisitionCode, rows) ->
-                    val firstRow = rows.first()
-
-                    // --- FIX IS HERE ---
-                    val uniqueId = firstRow.getOrNull(0)?.toString() // This is often the barcode
-                    val firstProductName = firstRow.getOrNull(1)?.toString() ?: "Unknown Product"
-                    val imageUrl = imageUrlMap[uniqueId] // Look up the image URL from the map
-                    val user = firstRow.getOrNull(7)?.toString() ?: "Unknown User"
-                    val timestampStr = firstRow.getOrNull(8)?.toString()
-                    val timestamp = try { timestampStr?.let { sdf.parse(it) } } catch (e: Exception) { null }
-                    val totalValue = rows.sumOf { it.getOrNull(6)?.toString()?.toDoubleOrNull() ?: 0.0 }
-
-                    GoodsReceivedItem(
-                        requisitionCode = requisitionCode,
-                        user = user,
-                        timestamp = timestamp,
-                        itemCount = rows.size,
-                        totalValue = totalValue,
-                        firstProductName = firstProductName, // Pass the product name
-                        imageUrl = imageUrl                    // Pass the image URL
-                    )
-                    // --- END OF FIX ---
-
-                }.sortedByDescending { it.timestamp } // Sort by most recent first
+                val groupedData = requisitionValues.groupBy { it.getOrNull(2)?.toString() ?: "UNKNOWN_CODE" }
+                    .map { (requisitionCode, rows) ->
+                        val purchasedItemsForThisCode = purchasedRequisitions[requisitionCode]
+                        val status = if (purchasedItemsForThisCode == null) {
+                            RequisitionStatusSangu.NOT_RECEIVED
+                        } else {
+                            val totalPurchasedItems = purchasedItemsForThisCode.size
+                            val totalReceivedItems = purchasedItemsForThisCode.count { !it.getOrNull(0)?.toString().isNullOrBlank() }
+                            when {
+                                totalReceivedItems >= totalPurchasedItems && totalPurchasedItems > 0 -> RequisitionStatusSangu.FULLY_RECEIVED
+                                else -> RequisitionStatusSangu.PARTIALLY_RECEIVED
+                            }
+                        }
+                        val firstRow = rows.first()
+                        GoodsReceivedItem(
+                            requisitionCode = requisitionCode,
+                            user = firstRow.getOrNull(7)?.toString() ?: "Unknown User",
+                            timestamp = try { firstRow.getOrNull(8)?.toString()?.let { sdf.parse(it) } } catch (e: Exception) { null },
+                            itemCount = rows.size,
+                            totalValue = rows.sumOf { it.getOrNull(6)?.toString()?.toDoubleOrNull() ?: 0.0 },
+                            firstProductName = firstRow.getOrNull(1)?.toString() ?: "Unknown Product",
+                            imageUrl = imageUrlMap[firstRow.getOrNull(0)?.toString()],
+                            status = status
+                        )
+                    }.sortedByDescending { it.timestamp }
 
                 allGoodsReceivedItems.clear()
                 allGoodsReceivedItems.addAll(groupedData)
 
                 withContext(Dispatchers.Main) {
                     progressDialog.dismiss()
-                    // Apply the default "ALL" filter on initial load
                     applyFilter(FilterType.ALL)
                 }
 
@@ -201,21 +278,56 @@ class goods_received_note : AppCompatActivity() {
                 allGoodsReceivedItems.filter { it.timestamp?.before(sevenDaysAgo) ?: true }
             }
         }
-
-        binding.goodsRecievedNoteRecyclerView.adapter = GoodsReceivedAdapter(filteredList)
+        // ✅ Pass the isAdmin flag and the delete handler to the adapter
+        binding.goodsRecievedNoteRecyclerView.adapter = GoodsReceivedAdapter(filteredList, isAdminUser) { requisitionCode ->
+            handleDeleteRequisition(requisitionCode)
+        }
     }
 
     private fun updateActiveButton(activeButton: CardView) {
         val activeColor = ContextCompat.getColor(this, R.color.active_filter_color)
         val inactiveColor = ContextCompat.getColor(this, R.color.inactive_filter_color)
-
         binding.AllBtn.setCardBackgroundColor(if (activeButton.id == R.id.AllBtn) activeColor else inactiveColor)
         binding.DepletedItem.setCardBackgroundColor(if (activeButton.id == R.id.DepletedItem) activeColor else inactiveColor)
         binding.MinimumOrder.setCardBackgroundColor(if (activeButton.id == R.id.MinimumOrder) activeColor else inactiveColor)
         binding.withinMonthExpirely.setCardBackgroundColor(if (activeButton.id == R.id.withinMonthExpirely) activeColor else inactiveColor)
     }
 
-    //<editor-fold desc="Google API Helpers">
+    //<editor-fold desc="Google API & Role Check Helpers">
+    private fun checkUserRole(email: String, callback: (isAdmin: Boolean, exists: Boolean, parentEmail: String?) -> Unit) {
+        val client = OkHttpClient()
+        val request = okhttp3.Request.Builder()
+            .url("https://opensheet.elk.sh/1W-LOkSgPPrfhZ_kqfycUvOcGviQplMng6xpc6KBQ9Ik/users")
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                runOnUiThread { callback(false, false, null) }
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                var isFound = false
+                if (response.isSuccessful) {
+                    try {
+                        val jsonArray = JSONArray(response.body?.string() ?: "")
+                        for (i in 0 until jsonArray.length()) {
+                            val obj = jsonArray.getJSONObject(i)
+                            if (email.equals(obj.optString("email").trim(), ignoreCase = true)) {
+                                runOnUiThread { callback(obj.optString("admin") == "1", true, null) }
+                                isFound = true; break
+                            }
+                        }
+                    } catch (e: JSONException) {
+                        runOnUiThread { callback(false, false, null) }
+                    }
+                }
+                if (!isFound) {
+                    runOnUiThread { callback(false, false, null) }
+                }
+            }
+        })
+    }
+
     private suspend fun findSheetIdByName(driveService: Drive, name: String): String? = withContext(Dispatchers.IO) {
         driveService.files().list().setQ("name='$name' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false").setFields("files(id)").execute().files.firstOrNull()?.id
     }

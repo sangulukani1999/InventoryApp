@@ -1,11 +1,12 @@
 package com.example.zed
 
 import DetailedGoodsReceivedProduct
-import android.app.AlertDialog
 import android.app.ProgressDialog
 import android.content.ActivityNotFoundException
 import android.content.ContentValues
 import android.content.Intent
+import android.database.Cursor
+import android.database.MatrixCursor
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -17,9 +18,10 @@ import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SearchView
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.values
 import androidx.core.view.WindowCompat
+import androidx.cursoradapter.widget.SimpleCursorAdapter
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.zed.databinding.ActivityDetailedGoodsReceivedNoteBinding
@@ -34,10 +36,9 @@ import com.google.api.services.sheets.v4.Sheets
 import com.google.api.services.sheets.v4.SheetsScopes
 import com.google.api.services.sheets.v4.model.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
 import java.math.BigDecimal
 import java.text.NumberFormat
@@ -45,6 +46,9 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 class detailed_goods_received_note : AppCompatActivity() {
+    // Search-related properties
+    private val allProductsForSearch = mutableListOf<DetailedGoodsReceivedProduct>()
+    private lateinit var suggestionAdapter: SimpleCursorAdapter
 
     private lateinit var binding: ActivityDetailedGoodsReceivedNoteBinding
     private lateinit var googleAccount: GoogleSignInAccount
@@ -59,8 +63,9 @@ class detailed_goods_received_note : AppCompatActivity() {
         setContentView(binding.root)
 
         setupSystemBars()
-        setupClickListeners()
         setupRecyclerView()
+        setupClickListeners()
+        setupSearchView() // Call the search setup
 
         googleAccount = GoogleSignIn.getLastSignedInAccount(this)
             ?: run {
@@ -77,12 +82,10 @@ class detailed_goods_received_note : AppCompatActivity() {
             }
 
         binding.textView51.text = requisitionCode
-        // Data is now fetched in onResume to ensure it's always fresh
     }
 
     override fun onResume() {
         super.onResume()
-        // Always refresh data when the screen becomes active.
         if (::googleAccount.isInitialized) {
             fetchDetailedData(binding.textView51.text.toString())
         }
@@ -100,11 +103,6 @@ class detailed_goods_received_note : AppCompatActivity() {
         binding.datailedGoodsReceivenNoteRecyclerView.adapter = adapter
     }
 
-    // In detailed_goods_received_note.kt
-
-    // ✅ --- FINAL CORRECTED FUNCTION with Batch Update for Products Sheet ---
-    // In detailed_goods_received_note.kt
-
     private fun updateGoodsReceivedStatus(item: DetailedGoodsReceivedProduct, position: Int) {
         val dialog = ProgressDialog(this).apply {
             setMessage("Confirming received goods...")
@@ -121,10 +119,9 @@ class detailed_goods_received_note : AppCompatActivity() {
                 val currentUserEmail = googleAccount.email ?: "Unknown"
                 val requisitionCode = binding.textView51.text.toString()
 
-                // --- Use batchGet to fetch both ranges in ONE API call ---
                 val rangesToFetch = listOf(
                     "purchased goods sheet!A:K",
-                    "Products!A:M" // Read up to column M to get all necessary data
+                    "Products!A:M"
                 )
                 val batchGetData = sheetsService.spreadsheets().values()
                     .batchGet(spreadsheetId)
@@ -134,7 +131,7 @@ class detailed_goods_received_note : AppCompatActivity() {
                 val purchaseValueRange = batchGetData.valueRanges[0]
                 val productValueRange = batchGetData.valueRanges[1]
 
-                // --- Part 1: Update the "purchased goods sheet" ---
+                // Part 1: Update the "purchased goods sheet"
                 purchaseValueRange.getValues()?.let { purchaseValues ->
                     if (purchaseValues.size > 1) {
                         for (i in 1 until purchaseValues.size) {
@@ -161,7 +158,7 @@ class detailed_goods_received_note : AppCompatActivity() {
                     }
                 }
 
-                // --- Part 2: Find the product row and prepare a batch update ---
+                // Part 2: Find the product row and prepare a batch update
                 productValueRange.getValues()?.let { productValues ->
                     if (productValues.size > 1) {
                         for (i in 1 until productValues.size) {
@@ -170,26 +167,13 @@ class detailed_goods_received_note : AppCompatActivity() {
 
                             if (rowBarcode == item.barcode) {
                                 val rowIndex = i + 1
-
-                                // 1. ADD to case_units (Column G, index 6)
                                 val currentCaseUnits = (if (row.size > 6) row[6]?.toString() else "0")?.toIntOrNull() ?: 0
                                 val newCaseUnits = currentCaseUnits + item.quantity
 
                                 val productUpdateData = mutableListOf<ValueRange>()
-
-                                // Add the update for Column G (case_units)
-                                productUpdateData.add(
-                                    ValueRange().setRange("'Products'!G$rowIndex").setValues(listOf(listOf(newCaseUnits)))
-                                )
-                                // ✅ THIS IS THE LINE IN QUESTION - IT IS SYNTACTICALLY CORRECT
-                                // Add the update for Column I (unit_cost)
-                                productUpdateData.add(
-                                    ValueRange().setRange("'Products'!I$rowIndex").setValues(listOf(listOf(item.unitCost)))
-                                )
-                                // Add the update for Column M (expiry_date)
-                                productUpdateData.add(
-                                    ValueRange().setRange("'Products'!M$rowIndex").setValues(listOf(listOf(item.expiryDate)))
-                                )
+                                productUpdateData.add(ValueRange().setRange("'Products'!G$rowIndex").setValues(listOf(listOf(newCaseUnits))))
+                                productUpdateData.add(ValueRange().setRange("'Products'!I$rowIndex").setValues(listOf(listOf(item.unitCost))))
+                                productUpdateData.add(ValueRange().setRange("'Products'!M$rowIndex").setValues(listOf(listOf(item.expiryDate))))
 
                                 val productBatchUpdateRequest = BatchUpdateValuesRequest().setValueInputOption("USER_ENTERED").setData(productUpdateData)
                                 sheetsService.spreadsheets().values().batchUpdate(spreadsheetId, productBatchUpdateRequest).execute()
@@ -199,7 +183,6 @@ class detailed_goods_received_note : AppCompatActivity() {
                     }
                 }
 
-                // --- Final UI update on success ---
                 withContext(Dispatchers.Main) {
                     Toast.makeText(this@detailed_goods_received_note, "Item confirmed successfully!", Toast.LENGTH_SHORT).show()
                     item.isReceived = true
@@ -213,16 +196,11 @@ class detailed_goods_received_note : AppCompatActivity() {
                 }
             } finally {
                 withContext(Dispatchers.Main) {
-                    dialog.dismiss()
+                    if(dialog.isShowing) dialog.dismiss()
                 }
             }
         }
     }
-
-
-    // In detailed_goods_received_note.kt
-
-    // In detailed_goods_received_note.kt
 
     private fun fetchDetailedData(requisitionCode: String) {
         val dialog = ProgressDialog(this).apply {
@@ -238,8 +216,7 @@ class detailed_goods_received_note : AppCompatActivity() {
                 val spreadsheetId = findSheetIdByName(drive, "nia-bridge data")
                     ?: throw Exception("Spreadsheet 'nia-bridge data' not found.")
 
-                // ✅ --- NEW: Use a Map to store costs from the purchase sheet ---
-                val purchasedItemsMap = mutableMapOf<String, String>() // Map<Barcode, UnitCost>
+                val purchasedItemsMap = mutableMapOf<String, String>()
                 val receivedBarcodes = mutableSetOf<String>()
                 val purchaseSheetName = "purchased goods sheet"
                 var requisitionHasPurchasedItems = false
@@ -251,18 +228,14 @@ class detailed_goods_received_note : AppCompatActivity() {
                     purchaseSheetValues.getValues()?.drop(1)?.forEach { rowObject ->
                         val row = rowObject as? List<Any> ?: return@forEach
                         val reqCodeInSheet = if (row.size > 10) row[10]?.toString() else null
-
-                        // Only process rows for the current requisition
                         if (reqCodeInSheet == requisitionCode) {
                             requisitionHasPurchasedItems = true
                             val barcode = if (row.size > 0) row[0]?.toString() else null
-                            val unitCost = if (row.size > 3) row[3]?.toString() else null // Unit Cost is in Column D (index 3)
+                            val unitCost = if (row.size > 3) row[3]?.toString() else null
                             val expiryDate = if (row.size > 8) row[8]?.toString() else null
 
                             if (barcode != null && unitCost != null) {
-                                // Store the specific unit cost for this barcode and requisition
                                 purchasedItemsMap[barcode] = unitCost
-
                                 if (!expiryDate.isNullOrBlank()) {
                                     receivedBarcodes.add(barcode)
                                 }
@@ -287,6 +260,7 @@ class detailed_goods_received_note : AppCompatActivity() {
                 val reqRows = reqResponse.getValues()?.drop(1) ?: emptyList()
 
                 detailedItems.clear()
+                allProductsForSearch.clear()
                 val targetCode = requisitionCode.trim()
 
                 reqRows.forEach { rowObject ->
@@ -295,23 +269,18 @@ class detailed_goods_received_note : AppCompatActivity() {
                     if (normalize(req.getOrNull(2)).equals(targetCode, ignoreCase = true)) {
                         productsMap[currentBarcode]?.let { productRowObject ->
                             val productRow = productRowObject as? List<Any> ?: return@let
-
-                            // ✅ --- NEW LOGIC: Determine the correct unit cost ---
-                            // 1. Look for the cost in our map from the "purchased goods sheet".
-                            // 2. If not found, fall back to the default cost from the "Products" sheet (Column I, index 8).
                             val unitCostToUse = purchasedItemsMap[currentBarcode] ?: normalize(productRow.getOrNull(8))
-
-                            detailedItems.add(
-                                DetailedGoodsReceivedProduct(
-                                    barcode = currentBarcode,
-                                    name = normalize(productRow.getOrNull(1)),
-                                    unitCost = unitCostToUse, // Use the determined cost
-                                    quantity = normalize(req.getOrNull(4)).toIntOrNull() ?: 0,
-                                    imageUrl = convertDriveUrlToDirect(normalize(productRow.getOrNull(2))),
-                                    isPurchased = purchasedItemsMap.containsKey(currentBarcode),
-                                    isReceived = receivedBarcodes.contains(currentBarcode)
-                                )
+                            val product = DetailedGoodsReceivedProduct(
+                                barcode = currentBarcode,
+                                name = normalize(productRow.getOrNull(1)),
+                                unitCost = unitCostToUse,
+                                quantity = normalize(req.getOrNull(4)).toIntOrNull() ?: 0,
+                                imageUrl = convertDriveUrlToDirect(normalize(productRow.getOrNull(2))),
+                                isPurchased = purchasedItemsMap.containsKey(currentBarcode),
+                                isReceived = receivedBarcodes.contains(currentBarcode)
                             )
+                            detailedItems.add(product)
+                            allProductsForSearch.add(product)
                         }
                     }
                 }
@@ -320,7 +289,6 @@ class detailed_goods_received_note : AppCompatActivity() {
                     throw Exception("No items found for Requisition Code '$requisitionCode'. Check for typos.")
                 }
 
-                // --- All data is valid, now update the UI safely ---
                 withContext(Dispatchers.Main) {
                     isRequisitionAlreadyPurchased = requisitionHasPurchasedItems
                     adapter.isPurchaseComplete = isRequisitionAlreadyPurchased
@@ -331,25 +299,14 @@ class detailed_goods_received_note : AppCompatActivity() {
                         binding.purchase.isEnabled = false
                         binding.purchase.cardElevation = 0f
                         binding.purchase.setCardBackgroundColor(ContextCompat.getColor(this@detailed_goods_received_note, R.color.variance_zero))
-
-                        // ✅ ADD THIS LINE TO DISABLE THE CLEAR BUTTON
                         binding.ClearSelectedItems.isEnabled = false
-
-                        // ✅ Change PDF button text to "Generate GRN"
                         binding.textView27.text = "Generate GRN"
-
-
-
                     } else {
                         binding.purchase.isEnabled = true
                         binding.purchase.cardElevation = 2f
-                        binding.purchase.setCardBackgroundColor(ContextCompat.getColor(this@detailed_goods_received_note, R.color.nav_bar_color))
-
-                        // ✅ ADD THIS LINE TO ENABLE THE CLEAR BUTTON
+                        binding.purchase.setCardBackgroundColor(ContextCompat.getColor(this@detailed_goods_received_note, R.color.selected_item_color))
                         binding.ClearSelectedItems.isEnabled = true
-
                         binding.textView27.text = "Requisition"
-
                     }
                 }
 
@@ -370,8 +327,6 @@ class detailed_goods_received_note : AppCompatActivity() {
         }
     }
 
-    // The rest of the file (setupClickListeners, handlePurchase, generatePdf, etc.) remains unchanged.
-    // Omitted for brevity.
     private fun setupClickListeners() {
         binding.backBtnPhysicalInventory.setOnClickListener { finish() }
 
@@ -397,6 +352,14 @@ class detailed_goods_received_note : AppCompatActivity() {
                 return@setOnClickListener
             }
             handlePurchase(checkedItems)
+        }
+
+        // ✅ --- BARCODE SCANNER LOGIC ADDED HERE ---
+        binding.barcodeScanner.setOnClickListener {
+            val scannerDialog = BarcodeScannerDialogFragment { scannedBarcode ->
+                findAndHighlightItem(scannedBarcode)
+            }
+            scannerDialog.show(supportFragmentManager, "DetailedGRNScanner")
         }
     }
 
@@ -429,13 +392,11 @@ class detailed_goods_received_note : AppCompatActivity() {
                     val batchUpdate = BatchUpdateSpreadsheetRequest().setRequests(listOf(Request().setAddSheet(addSheetRequest)))
                     sheetsService.spreadsheets().batchUpdate(spreadsheetId, batchUpdate).execute()
 
-                    val headerValues = listOf(
-                        listOf(
-                            "Barcode", "Product Name", "Quantity", "Unit Cost", "Total Cost",
-                            "Purchased By", "Received By", "Timestamp", "Expiry Date", "Expiry Timestamp",
-                            "Requisition Code"
-                        )
-                    )
+                    val headerValues = listOf(listOf(
+                        "Barcode", "Product Name", "Quantity", "Unit Cost", "Total Cost",
+                        "Purchased By", "Received By", "Timestamp", "Expiry Date", "Expiry Timestamp",
+                        "Requisition Code"
+                    ))
                     val headerBody = ValueRange().setValues(headerValues)
                     sheetsService.spreadsheets().values()
                         .update(spreadsheetId, "$purchaseSheetName!A1", headerBody)
@@ -479,10 +440,84 @@ class detailed_goods_received_note : AppCompatActivity() {
                 }
             } finally {
                 withContext(Dispatchers.Main) {
-                    dialog.dismiss()
+                    if(dialog.isShowing) dialog.dismiss()
                 }
             }
         }
+    }
+
+    private fun setupSearchView() {
+        val from = arrayOf("productName")
+        val to = intArrayOf(android.R.id.text1)
+        suggestionAdapter = SimpleCursorAdapter(this, android.R.layout.simple_list_item_1, null, from, to, 0)
+        binding.searchView.suggestionsAdapter = suggestionAdapter
+
+        binding.searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
+            override fun onQueryTextSubmit(query: String?): Boolean {
+                val firstMatch = allProductsForSearch.firstOrNull { it.name.contains(query ?: "", ignoreCase = true) }
+                if (firstMatch != null) {
+                    findAndHighlightItem(firstMatch.barcode)
+                } else {
+                    Toast.makeText(this@detailed_goods_received_note, "No product found for '$query'", Toast.LENGTH_SHORT).show()
+                }
+                binding.searchView.clearFocus()
+                binding.searchView.setQuery("", false)
+                return true
+            }
+
+            override fun onQueryTextChange(newText: String?): Boolean {
+                updateSearchSuggestions(newText)
+                return true
+            }
+        })
+
+        binding.searchView.setOnSuggestionListener(object : SearchView.OnSuggestionListener {
+            override fun onSuggestionSelect(position: Int): Boolean = true
+            override fun onSuggestionClick(position: Int): Boolean {
+                (suggestionAdapter.getItem(position) as? Cursor)?.let {
+                    val barcodeIndex = it.getColumnIndex("productBarcode")
+                    if (barcodeIndex != -1) {
+                        findAndHighlightItem(it.getString(barcodeIndex))
+                    }
+                }
+                binding.searchView.setQuery("", false)
+                binding.searchView.clearFocus()
+                return true
+            }
+        })
+    }
+
+    private fun findAndHighlightItem(barcode: String) {
+        val progressDialog = ProgressDialog(this).apply {
+            setMessage("Finding item..."); setCancelable(false); show()
+        }
+
+        lifecycleScope.launch {
+            delay(50)
+            val itemIndex = detailedItems.indexOfFirst { it.barcode == barcode }
+
+            if (itemIndex != -1) {
+                val layoutManager = binding.datailedGoodsReceivenNoteRecyclerView.layoutManager as LinearLayoutManager
+                layoutManager.scrollToPositionWithOffset(itemIndex, 0)
+                // You could add a temporary highlight effect here if needed
+                adapter.notifyItemChanged(itemIndex, "HIGHLIGHT")
+            } else {
+                Toast.makeText(this@detailed_goods_received_note, "Product with barcode '$barcode' not found in this list.", Toast.LENGTH_SHORT).show()
+            }
+            progressDialog.dismiss()
+        }
+    }
+
+    private fun updateSearchSuggestions(query: String?) {
+        val newCursor = MatrixCursor(arrayOf("_id", "productName", "productBarcode"))
+        if (!query.isNullOrBlank()) {
+            allProductsForSearch.filter {
+                it.name.contains(query, ignoreCase = true) || it.barcode.contains(query, ignoreCase = true)
+            }.take(5).forEachIndexed { index, product ->
+                newCursor.addRow(arrayOf(index, product.name, product.barcode))
+            }
+        }
+        suggestionAdapter.changeCursor(newCursor)
     }
 
     private fun updateTotals() {
@@ -628,63 +663,32 @@ class detailed_goods_received_note : AppCompatActivity() {
         }
     }
 
-    // In detailed_goods_received_note.kt
-
-    // In detailed_goods_received_note.kt
-
-    // ✅ --- NEW, CORRECTED PDF SAVING LOGIC (Using MediaStore) ---
     private fun savePdfToDownloads(document: PdfDocument, fileName: String) {
-        // ContentResolver is the modern way to interact with shared storage
         val resolver = contentResolver
-
-        // ContentValues will hold the metadata for our new file
         val contentValues = ContentValues().apply {
-            // Set the file name that will appear in the Downloads folder
             put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-
-            // Set the file type
             put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
-
-            // Specify that the file should be placed in the Downloads sub-directory
-            // This requires Android 10 (API 29) or higher
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
                 put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
             }
         }
 
         var pdfUri: Uri? = null
-
         try {
-            // Use the ContentResolver to insert a new entry into the MediaStore.
-            // This creates a placeholder for our file and returns a URI to it.
             pdfUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
-
             if (pdfUri == null) {
                 throw IOException("Failed to create new MediaStore entry.")
             }
-
-            // Open an output stream using the URI we just got
             resolver.openOutputStream(pdfUri)?.use { outputStream ->
-                // Write the PDF document content to the output stream
                 document.writeTo(outputStream)
             }
-
-            // Close the document now that it's written
             document.close()
-
             Toast.makeText(this, "PDF saved to Downloads folder", Toast.LENGTH_LONG).show()
-
-            // Open the PDF using the URI
             openPdf(pdfUri)
-
         } catch (e: Exception) {
             Log.e("PDF", "Error saving PDF", e)
             Toast.makeText(this, "Error saving PDF: ${e.message}", Toast.LENGTH_LONG).show()
-
-            // If there was an error, try to delete the incomplete MediaStore entry
             pdfUri?.let { resolver.delete(it, null, null) }
-
-            // Always ensure the document is closed
             document.close()
         }
     }
@@ -700,7 +704,6 @@ class detailed_goods_received_note : AppCompatActivity() {
         }
     }
 
-
     private fun normalize(value: Any?): String {
         return value?.toString()?.trim()?.removeSuffix(".0") ?: ""
     }
@@ -712,11 +715,7 @@ class detailed_goods_received_note : AppCompatActivity() {
     }
 
     private fun setupSystemBars() {
-        //WindowCompat.setDecorFitsSystemWindows(window, false)
-        //window.statusBarColor = ContextCompat.getColor(this, R.color.selected_item_color)
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = true
-        //window.navigationBarColor = ContextCompat.getColor(this, R.color.white)
-        //WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = true
     }
 
     private suspend fun findSheetIdByName(driveService: Drive, name: String): String? =
@@ -745,5 +744,4 @@ class detailed_goods_received_note : AppCompatActivity() {
         return Sheets.Builder(GoogleNetHttpTransport.newTrustedTransport(), GsonFactory.getDefaultInstance(), credential)
             .setApplicationName("Nia Bridge App").build()
     }
-
 }

@@ -21,7 +21,6 @@ class DetailedGoodsReceivedAdapter(
     private val onConfirmReceive: (item: DetailedGoodsReceivedProduct, position: Int) -> Unit
 ) : RecyclerView.Adapter<DetailedGoodsReceivedAdapter.ViewHolder>() {
 
-    // This property is no longer the primary lock, but can be used for other UI logic if needed.
     var isPurchaseComplete: Boolean = false
 
     class ViewHolder(val binding: DetailedGoodsReceivedNoteItedBinding) : RecyclerView.ViewHolder(binding.root)
@@ -62,6 +61,7 @@ class DetailedGoodsReceivedAdapter(
 
         holder.binding.productImage.load(item.imageUrl) {
             crossfade(true)
+            // ✅ CORRECTED to use an existing drawable
             placeholder(R.drawable.ic_placeholder)
             error(R.drawable.ic_placeholder)
         }
@@ -74,10 +74,7 @@ class DetailedGoodsReceivedAdapter(
         val receivedIndicatorColor = if (item.isReceived) R.color.variance_positive else R.color.variance_negative
         holder.binding.goodsReceivedIndicator.setCardBackgroundColor(ContextCompat.getColor(context, receivedIndicatorColor))
 
-
-        // ✅ --- NEW, CORRECTED UI LOGIC ---
-
-        // Rule: The quantity and cost fields should be locked if the purchase is complete.
+        // UI LOCKING LOGIC
         val purchaseIsLocked = isPurchaseComplete
         holder.binding.costPrice.isEnabled = !purchaseIsLocked
         holder.binding.quantityInput.isEnabled = !purchaseIsLocked
@@ -86,34 +83,27 @@ class DetailedGoodsReceivedAdapter(
         holder.binding.quantityInput.alpha = if (purchaseIsLocked) 0.5f else 1.0f
         holder.binding.itemCheckbox.alpha = if (purchaseIsLocked) 0.5f else 1.0f
 
-        // Rule: The date field has its own specific logic.
-        // It should be enabled ONLY if the item has been purchased but NOT yet received.
         val dateIsEditable = item.isPurchased && !item.isReceived
         holder.binding.expiryDate.isEnabled = dateIsEditable
         holder.binding.expiryDate.alpha = if (dateIsEditable) 1.0f else 0.5f
 
 
-        // --- LISTENERS (No changes here) ---
-
-        // Click listener to show the DatePickerDialog
+        // LISTENERS
         holder.binding.expiryDate.setOnClickListener {
-            // This check is still valid, as it only works if the field is enabled.
             if (holder.binding.expiryDate.isEnabled) {
                 val calendar = Calendar.getInstance()
                 val datePickerDialog = DatePickerDialog(context, { _, year, month, day ->
                     val dateStr = String.format(Locale.getDefault(), "%02d/%02d/%d", day, month + 1, year)
                     holder.binding.expiryDate.setText(dateStr)
-                    holder.binding.quantityInput.requestFocus() // Trigger focus loss
+                    holder.binding.quantityInput.requestFocus()
                 }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH))
 
                 datePickerDialog.show()
             }
         }
 
-        // Focus change listener to trigger the confirmation dialog
         holder.binding.expiryDate.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
             val currentDateText = holder.binding.expiryDate.text.toString()
-            // This logic is now perfect, as it will only trigger if the date was editable.
             if (!hasFocus && dateIsEditable && currentDateText != "Set Date" && currentDateText != item.expiryDate) {
                 AlertDialog.Builder(context)
                     .setTitle("Confirm Expiry Date")
@@ -123,7 +113,7 @@ class DetailedGoodsReceivedAdapter(
                         onConfirmReceive(item, position)
                     }
                     .setNegativeButton("No") { dialog, _ ->
-                        holder.binding.expiryDate.setText(item.expiryDate ?: "Set Date") // Revert
+                        holder.binding.expiryDate.setText(item.expiryDate ?: "Set Date")
                         dialog.dismiss()
                     }
                     .setCancelable(false)
@@ -131,14 +121,11 @@ class DetailedGoodsReceivedAdapter(
             }
         }
 
-        // Other listeners remain unchanged
         holder.binding.itemCheckbox.setOnCheckedChangeListener { _, isChecked ->
             item.isChecked = isChecked
             onStateChanged()
         }
 
-        // TextWatchers are complex, better to leave them be if not causing issues.
-        // If you need to add logic here, it would be to update totals.
         val quantityTextWatcher = object : TextWatcher {
             override fun afterTextChanged(s: Editable?) {
                 item.quantity = s.toString().toIntOrNull() ?: 0
