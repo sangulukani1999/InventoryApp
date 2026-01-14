@@ -8,7 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.activityViewModels // ✅ 1. ADD THIS IMPORT
+import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.viewpager2.widget.ViewPager2
@@ -32,20 +32,18 @@ import org.json.JSONArray
 import org.json.JSONException
 import java.io.IOException
 
-// Import the shared data classes from Models.kt
+// Import the shared data classes
 import com.example.zed.Product
 import com.example.zed.Location
 import com.example.zed.UnitOfMeasure
+import com.example.zed.CommitItem // ✅ Import CommitItem
 
 class stock_fragment : Fragment() {
     private var _binding: ActivityStockFragmentBinding? = null
     private val binding get() = _binding!!
 
     private lateinit var viewPager: ViewPager2
-
-    // ✅ 2. GET THE VIEWMODEL INSTANCE
     private val sharedViewModel: SharedViewModel by activityViewModels()
-
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -61,31 +59,156 @@ class stock_fragment : Fragment() {
 
     private fun setupClickListeners() {
         binding.varianceAdd.setOnClickListener {
-            val currentUser = Firebase.auth.currentUser
-            if (currentUser?.email == null) {
-                Toast.makeText(requireContext(), "Cannot add product: User not signed in.", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            val userEmail = currentUser.email!!
-            val progressDialog = ProgressDialog(requireContext()).apply {
-                setMessage("Verifying user role...")
-                setCancelable(false)
-                show()
-            }
-            checkUserRole(userEmail) { exists, parentEmail ->
-                progressDialog.dismiss()
-                if (exists) {
-                    MyBottomStockSheet(userEmail, parentEmail) {
-                        fetchInventoryData() // Refresh callback
-                    }.show(parentFragmentManager, "MyBottomSheet")
-                } else {
-                    Toast.makeText(requireContext(), "Access denied. User not found in registry.", Toast.LENGTH_LONG).show()
+            // This is the correct place to start the commit process
+            initiateCommitProcess()
+        }
+    }
+
+    // ✅ --- START: NEW LOGIC TO PRE-LOAD DATA FOR COMMIT SHEET ---
+
+    private fun initiateCommitProcess() {
+        val currentUser = Firebase.auth.currentUser
+        if (currentUser?.email == null) {
+            Toast.makeText(requireContext(), "Cannot commit: User not signed in.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val userEmail = currentUser.email!!
+
+        val progressDialog = ProgressDialog(requireContext()).apply {
+            setMessage("Preparing commit data...")
+            setCancelable(false)
+            show()
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val logTag = "CommitPrep"
+                Log.d(logTag, "====== STARTING COMMIT PREPARATION ======")
+
+                val account = GoogleSignIn.getLastSignedInAccount(requireContext())
+                    ?: throw IllegalStateException("User is not signed in.")
+
+                val sheetsService = getSheetsService(account)
+                val driveService = getDriveService(account)
+                val spreadsheetId = findSheetIdByName(driveService, "nia-bridge data")
+                    ?: throw IllegalStateException("Spreadsheet 'nia-bridge data' not found.")
+                Log.d(logTag, "Found Spreadsheet ID: $spreadsheetId")
+
+                // 1. Fetch data required for the commit sheet
+                val products = fetchProductsForCommit(sheetsService, spreadsheetId)
+                val countedQuantities = fetchCountedQuantities(sheetsService, spreadsheetId)
+                val productsMap = products.associateBy { it.barcode }
+
+                val allReviewItems = mutableListOf<CommitItem>()
+                Log.d(logTag, "Processing ${countedQuantities.size} items from 'countData'.")
+
+                // 2. Process and create the list of CommitItems
+                for ((barcode, countedData) in countedQuantities) {
+                    val product = productsMap[barcode] ?: continue
+                    val countedQty = countedData.first
+                    val countedBy = countedData.second
+                    val systemStock = product.caseQty.toDoubleOrNull() ?: 0.0
+                    val variance = countedQty.toDouble() - systemStock
+
+                    allReviewItems.add(
+                        CommitItem(
+                            productName = product.name,
+                            barcode = product.barcode,
+                            imageUrl = product.imageUrl,
+                            variance = variance,
+                            countedQty = countedQty,
+                            unitCost = product.unitCost.toDoubleOrNull() ?: 0.0,
+                            locations = emptyList(), // Location data is not needed in the commit sheet display itself
+                            countedBy = countedBy
+                        )
+                    )
+                }
+
+                Log.d(logTag, "Finished preparation. Found ${allReviewItems.size} items to review.")
+
+                // 3. Switch to Main thread to show the bottom sheet
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    if (allReviewItems.isEmpty()) {
+                        Toast.makeText(requireContext(), "No counted items found to review.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        // 4. ✅ Show the bottom sheet WITH the pre-fetched data
+                        bottom_sheet_commit(
+                            userEmail = userEmail,
+                            parentEmail = null, // Adjust if needed
+                            initialItems = allReviewItems, // Pass the prepared data
+                            onStockAdded = { fetchInventoryData() } // The refresh callback remains
+                        ).show(parentFragmentManager, "CommitBottomSheet")
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    Log.e("CommitPrep", "Error during commit preparation", e)
+                    Toast.makeText(context, "Error preparing commit: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }
     }
 
+
+    // ✅ --- HELPER FUNCTIONS MOVED HERE FROM bottom_sheet_commit.kt ---
+
+    private suspend fun fetchProductsForCommit(sheetsService: Sheets, spreadsheetId: String): List<Product> {
+        val productsRange = "Products!A2:K"
+        val response = sheetsService.spreadsheets().values().get(spreadsheetId, productsRange).execute()
+
+        // ✅ CORRECTED: Explicitly use .getValues() and check for null/empty
+        val values = response.getValues()
+        if (values.isNullOrEmpty()) {
+            Log.w("CommitPrep", "fetchProductsForCommit: No data found in 'Products' sheet.")
+            return emptyList()
+        }
+
+        return values.mapNotNull { row ->
+            val barcodeValue = row.getOrNull(3)?.toString()?.trim()
+            if (barcodeValue.isNullOrBlank()) return@mapNotNull null
+            Product(
+                id = row.getOrNull(0)?.toString() ?: "", name = row.getOrNull(1)?.toString() ?: "",
+                imageUrl = row.getOrNull(2)?.toString(), barcode = barcodeValue,
+                caseQty = row.getOrNull(6)?.toString() ?: "0", unitCost = row.getOrNull(8)?.toString() ?: "0.00",
+                locationIds = emptyList(), categoryId = "", unit = "", minOrder = "", expiryDate = ""
+            )
+        }
+    }
+
+    private suspend fun fetchCountedQuantities(sheetsService: Sheets, spreadsheetId: String): Map<String, Pair<Int, String>> {
+        val map = mutableMapOf<String, Pair<Int, String>>()
+        val countDataRange = "countData!B:F" // Barcode (B) to User Email (F)
+        try {
+            val response = sheetsService.spreadsheets().values().get(spreadsheetId, countDataRange).execute()
+
+            // ✅ CORRECTED: Explicitly use .getValues() and check for null
+            val values = response.getValues()
+
+            if (values != null && values.isNotEmpty()) {
+                values.drop(1).forEach { row ->
+                    val barcode = row.getOrNull(0)?.toString()?.trim()
+                    val quantity = row.getOrNull(3)?.toString()?.toIntOrNull() ?: 0
+                    val user = row.getOrNull(4)?.toString()?.trim() ?: "unknown"
+
+                    if (!barcode.isNullOrBlank()) {
+                        val current = map.getOrDefault(barcode, Pair(0, user))
+                        map[barcode] = Pair(current.first + quantity, user)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("CommitPrep", "Could not fetch from countData sheet, it might not exist yet. ${e.message}")
+        }
+        return map
+    }
+
+    // ✅ --- END: NEW LOGIC ---
+
+
     private fun checkUserRole(email: String, callback: (exists: Boolean, parentEmail: String?) -> Unit) {
+        // This function is fine as is.
         val client = OkHttpClient()
         val request = Request.Builder()
             .url("https://opensheet.elk.sh/1W-LOkSgPPrfhZ_kqfycUvOcGviQplMng6xpc6KBQ9Ik/users")
@@ -95,7 +218,6 @@ class stock_fragment : Fragment() {
                 activity?.runOnUiThread { callback(false, null) }
             }
             override fun onResponse(call: Call, response: Response) {
-                var isFound = false
                 if (response.isSuccessful) {
                     try {
                         val jsonArray = JSONArray(response.body?.string() ?: "")
@@ -114,14 +236,13 @@ class stock_fragment : Fragment() {
                         Log.e("UserRoleCheck", "JSON parsing error", e)
                     }
                 }
-                if (!isFound) {
-                    activity?.runOnUiThread { callback(false, null) }
-                }
+                activity?.runOnUiThread { callback(false, null) }
             }
         })
     }
 
     private fun fetchInventoryData() {
+        // This function for the main screen list is fine as is.
         val progressDialog = ProgressDialog(requireContext()).apply {
             setMessage("Fetching inventory...")
             setCancelable(false)

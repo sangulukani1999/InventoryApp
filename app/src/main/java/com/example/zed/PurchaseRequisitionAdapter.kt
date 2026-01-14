@@ -21,14 +21,13 @@ data class RequisitionItem(
 class PurchaseRequisitionAdapter(
     private val items: MutableList<RequisitionItem>,
     private val currentEmail: String,
-    private val isAdmin: Boolean,
+    private val isAdmin: Boolean, // This parameter is no longer used for editing logic
     private val onItemChanged: (RequisitionItem) -> Unit,
     private val onTotalChanged: () -> Unit
 ) : RecyclerView.Adapter<PurchaseRequisitionAdapter.RequisitionViewHolder>() {
 
     var highlightedPosition = -1
 
-    // ... (RequisitionViewHolder class remains the same)
     inner class RequisitionViewHolder(val binding: PurchaseRequisitionItemBinding) :
         RecyclerView.ViewHolder(binding.root) {
 
@@ -43,6 +42,7 @@ class PurchaseRequisitionAdapter(
                     if (item.quantity != newQuantity) {
                         item.quantity = newQuantity
                         updateIndividualTotal(item)
+                        // Only trigger updates if the item is actually checked
                         if (item.isChecked) {
                             onItemChanged(item)
                             onTotalChanged()
@@ -53,15 +53,22 @@ class PurchaseRequisitionAdapter(
         }
 
         fun bind(item: RequisitionItem) {
+            // Highlighting logic
             if (adapterPosition == highlightedPosition) {
                 binding.mainCard.setCardBackgroundColor(Color.parseColor("#E0E0E0"))
             } else {
                 binding.mainCard.setCardBackgroundColor(Color.WHITE)
             }
 
+            // --- Data Binding ---
             binding.productName.text = item.product.name
             binding.costValue.text = "K${item.product.unitCost}"
-            binding.quantityInput.setText(item.quantity.toString())
+
+            // Use removeTextChangedListener before setting text to avoid triggering the watcher
+            binding.quantityInput.removeTextChangedListener(textWatcher)
+            binding.quantityInput.setText(if (item.quantity > 0) item.quantity.toString() else "")
+            binding.quantityInput.addTextChangedListener(textWatcher)
+
 
             binding.productImage.load(item.product.imageUrl) {
                 crossfade(true)
@@ -72,14 +79,17 @@ class PurchaseRequisitionAdapter(
             updateIndividualTotal(item)
             binding.itemCheckbox.isChecked = item.isChecked
 
-            val canEdit = isAdmin
+            // ✅ THE FIX: Editing is now always enabled for every user.
+            // The `isAdmin` flag passed to the adapter is ignored for this logic.
+            val canEdit = true
             binding.quantityInput.isEnabled = canEdit
             binding.itemCheckbox.isEnabled = canEdit
+            binding.quantityInput.alpha = 1.0f // Ensure full opacity
+            binding.itemCheckbox.alpha = 1.0f  // Ensure full opacity
 
-            binding.quantityInput.removeTextChangedListener(textWatcher)
-            binding.quantityInput.addTextChangedListener(textWatcher)
-
+            // --- Listeners ---
             binding.itemCheckbox.setOnCheckedChangeListener { _, isChecked ->
+                // Check if the change was user-initiated to prevent loops
                 if (binding.itemCheckbox.isPressed) {
                     item.isChecked = isChecked
                     onItemChanged(item)
@@ -94,7 +104,6 @@ class PurchaseRequisitionAdapter(
             binding.individualTotalValue.text = "K${"%.2f".format(total)}"
         }
     }
-
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RequisitionViewHolder {
         val binding = PurchaseRequisitionItemBinding.inflate(
@@ -111,13 +120,12 @@ class PurchaseRequisitionAdapter(
 
     override fun getItemCount(): Int = items.size
 
-    // ✅ NEW METHOD TO CLEAR SELECTIONS
     fun clearAllSelections() {
-        // Uncheck all items in the list
-        items.forEach { it.isChecked = false }
-        // Notify the adapter that the entire dataset has changed to redraw all items
+        items.forEach {
+            it.isChecked = false
+            it.quantity = 0 // Also reset quantity on clear
+        }
         notifyDataSetChanged()
-        // Trigger a total recalculation
         onTotalChanged()
     }
 

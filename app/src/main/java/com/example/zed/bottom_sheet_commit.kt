@@ -7,7 +7,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
-import androidx.core.graphics.values
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.zed.databinding.BottomSheetCommitBinding
@@ -25,131 +24,76 @@ import com.google.api.services.sheets.v4.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.math.BigDecimal
 import java.text.SimpleDateFormat
 import java.util.*
 
-// Data class for items shown in the RecyclerView
+// Data classes are still needed for this file's internal logic.
+// Make sure these definitions match any defined in other files if needed.
 data class CommitItem(
     val productName: String,
     val barcode: String,
     val imageUrl: String?,
     val variance: Double,
-    val locations: List<Location>
+    val countedQty: Int,
+    val unitCost: Double,
+    val locations: List<Location>,
+    val countedBy: String
 )
 
-// Data class to hold detailed info needed for the commit process
 private data class ProductCommitDetails(
-    val stockInUnits: Double,
-    val costPrice: Double,
-    val sellingPrice: Double,
-    val highestUnitValue: Int,
-    val productRowIndex: Int // Row number in the "Products" sheet
+    val productRowIndex: Int
 )
 
+// ✅ 1. CONSTRUCTOR IS UPDATED TO RECEIVE DATA
 class bottom_sheet_commit(
     private val userEmail: String,
-    private val parentEmail: String?,
+    private val parentEmail: String? = null,
+    private val initialItems: List<CommitItem>, // Receives pre-fetched data
     private val onStockAdded: () -> Unit
 ) : BottomSheetDialogFragment() {
 
     private var _binding: BottomSheetCommitBinding? = null
     private val binding get() = _binding!!
-
-    private val itemsToCommit = mutableListOf<CommitItem>()
+    private val logTag = "CommitSheet"
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
         _binding = BottomSheetCommitBinding.inflate(inflater, container, false)
+        Log.d(logTag, "onCreateView: View created.")
         return binding.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        Log.d(logTag, "onViewCreated: UI is ready.")
 
         binding.commitStockRecyclerView.layoutManager = LinearLayoutManager(requireContext())
-        fetchInventoryData()
+
+        // ✅ 2. IMMEDIATELY DISPLAY THE DATA THAT WAS PASSED IN
+        Log.d(logTag, "Displaying ${initialItems.size} pre-fetched items.")
+        val adapter = CommitReviewAdapter(initialItems) // Assuming you have this adapter
+        binding.commitStockRecyclerView.adapter = adapter
 
         binding.cardView4.setOnClickListener {
-            // We only commit items that actually have a variance.
-            val itemsWithVariance = itemsToCommit.filter { it.variance != 0.0 }
-            if (itemsWithVariance.isNotEmpty()) {
-                commitStockToSheet(itemsWithVariance)
+            Log.d(logTag, "Commit button clicked.")
+            if (initialItems.isNotEmpty()) {
+                Log.d(logTag, "Found ${initialItems.size} items to commit for audit trail.")
+                commitCountDataToSheet(initialItems)
             } else {
-                Toast.makeText(requireContext(), "No items with variance to commit.", Toast.LENGTH_SHORT).show()
+                Log.d(logTag, "No counted items were found to commit.")
+                Toast.makeText(requireContext(), "No items to commit.", Toast.LENGTH_SHORT).show()
                 dismiss()
             }
         }
     }
 
-    private fun fetchInventoryData() {
-        val progressDialog = ProgressDialog(requireContext()).apply {
-            setMessage("Analyzing variances...")
-            setCancelable(false)
-            show()
-        }
+    // ❗️ ALL DATA FETCHING LOGIC HAS BEEN REMOVED FROM THIS FILE ❗️
+    // The `commitCountDataToSheet` function and its helpers remain.
 
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val account = GoogleSignIn.getLastSignedInAccount(requireContext())
-                    ?: throw IllegalStateException("User is not signed in.")
-                val sheetsService = getSheetsService(account)
-                val driveService = getDriveService(account)
-                val spreadsheetId = findSheetIdByName(driveService, "nia-bridge data")
-                    ?: throw IllegalStateException("Spreadsheet 'nia-bridge data' not found.")
-
-                val products = fetchProducts(sheetsService, spreadsheetId)
-                val locationMap = fetchLocations(sheetsService, spreadsheetId)
-                val unitsMap = fetchUnits(sheetsService, spreadsheetId)
-                val countedQuantities = fetchCountedQuantities(sheetsService, spreadsheetId)
-
-                val allReviewItems = mutableListOf<CommitItem>()
-                itemsToCommit.clear()
-
-                for (product in products) {
-                    val unitsForThisProduct = unitsMap[product.barcode] ?: emptyList()
-                    val stockInCases = product.caseQty.toDoubleOrNull() ?: 0.0
-
-                    val totalStockInUnits = if (unitsForThisProduct.isNotEmpty()) {
-                        val highestUnit = unitsForThisProduct.mapNotNull { it.caseUnits.toIntOrNull() }.maxOrNull() ?: 1
-                        stockInCases * highestUnit
-                    } else {
-                        stockInCases
-                    }
-
-                    val countedQty = countedQuantities.getOrDefault(product.barcode, 0)
-                    val variance = totalStockInUnits - countedQty.toDouble()
-
-                    val commitItem = CommitItem(
-                        productName = product.name,
-                        barcode = product.barcode,
-                        imageUrl = product.imageUrl,
-                        variance = variance,
-                        locations = product.locationIds.mapNotNull { locationId -> locationMap[locationId] }
-                    )
-                    allReviewItems.add(commitItem)
-                    itemsToCommit.add(commitItem)
-                }
-
-                withContext(Dispatchers.Main) {
-                    progressDialog.dismiss()
-                    val adapter = CommitReviewAdapter(allReviewItems)
-                    binding.commitStockRecyclerView.adapter = adapter
-                }
-
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    progressDialog.dismiss()
-                    Log.e("CommitSheet", "Error during fetchInventoryData", e)
-                    Toast.makeText(context, "Error analyzing inventory: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
-
-    private fun commitStockToSheet(itemsToCommit: List<CommitItem>) {
+    private fun commitCountDataToSheet(itemsToProcess: List<CommitItem>) {
+        Log.d(logTag, "commitCountDataToSheet: Starting commit process for ${itemsToProcess.size} items.")
         val progressDialog = ProgressDialog(requireContext()).apply {
             setMessage("Committing stock data...")
             setCancelable(false)
@@ -163,39 +107,39 @@ class bottom_sheet_commit(
                 val driveService = getDriveService(account)
                 val spreadsheetId = findSheetIdByName(driveService, "nia-bridge data") ?: throw IllegalStateException("Spreadsheet not found.")
 
-                val newSheetName = "stock_taking_sheet"
+                val stockTakingSheetName = "stock_taking"
                 val productsSheetName = "Products"
+                val countDataSheetName = "countData"
 
-                ensureStockTakingSheetExists(sheetsService, spreadsheetId, newSheetName)
+                ensureSheetExists(sheetsService, spreadsheetId, stockTakingSheetName)
 
                 val newRowsForStockTaking = mutableListOf<List<Any>>()
                 val updateRequestsForProducts = mutableListOf<Request>()
-                val currentDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
 
-                for (item in itemsToCommit) {
-                    val details = getProductDetailsForCommit(sheetsService, spreadsheetId, item.barcode)
+                val itemsWithVariance = itemsToProcess.filter { it.variance != 0.0 }
 
-                    // The new total quantity is the old stock MINUS the variance
-                    val newTotalStock = (details.stockInUnits - item.variance).toInt()
-                    val valueOfShop = details.costPrice * newTotalStock
-
+                for (item in itemsToProcess) {
+                    val totalCost = item.variance * item.unitCost
                     newRowsForStockTaking.add(
-                        listOf(currentDate, item.productName, details.costPrice, details.sellingPrice, newTotalStock, valueOfShop, userEmail)
+                        listOf(timestamp, item.barcode, item.productName, item.countedQty, item.variance, item.unitCost, totalCost, item.countedBy)
                     )
+                }
 
-                    val newCaseQty = if (details.highestUnitValue > 0) newTotalStock.toDouble() / details.highestUnitValue else 0.0
+                for (item in itemsWithVariance) {
+                    val details = getProductDetailsForCommit(sheetsService, spreadsheetId, item.barcode)
                     val range = GridRange()
                         .setSheetId(getSheetId(sheetsService, spreadsheetId, productsSheetName))
                         .setStartRowIndex(details.productRowIndex - 1)
                         .setEndRowIndex(details.productRowIndex)
-                        .setStartColumnIndex(6)
+                        .setStartColumnIndex(6) // Column G for 'caseQty'
                         .setEndColumnIndex(7)
 
                     updateRequestsForProducts.add(
                         Request().setUpdateCells(
                             UpdateCellsRequest()
                                 .setRange(range)
-                                .setRows(listOf(RowData().setValues(listOf(CellData().setUserEnteredValue(ExtendedValue().setNumberValue(newCaseQty))))))
+                                .setRows(listOf(RowData().setValues(listOf(CellData().setUserEnteredValue(ExtendedValue().setNumberValue(item.countedQty.toDouble()))))))
                                 .setFields("userEnteredValue")
                         )
                     )
@@ -204,7 +148,7 @@ class bottom_sheet_commit(
                 if (newRowsForStockTaking.isNotEmpty()) {
                     val appendBody = ValueRange().setValues(newRowsForStockTaking)
                     sheetsService.spreadsheets().values()
-                        .append(spreadsheetId, "$newSheetName!A1", appendBody)
+                        .append(spreadsheetId, "$stockTakingSheetName!A1", appendBody)
                         .setValueInputOption("USER_ENTERED")
                         .execute()
                 }
@@ -213,6 +157,12 @@ class bottom_sheet_commit(
                     val batchUpdateRequest = BatchUpdateSpreadsheetRequest().setRequests(updateRequestsForProducts)
                     sheetsService.spreadsheets().batchUpdate(spreadsheetId, batchUpdateRequest).execute()
                 }
+
+                val clearRequest = ClearValuesRequest()
+                val rangeToClear = "'$countDataSheetName'!A2:Z"
+                sheetsService.spreadsheets().values()
+                    .clear(spreadsheetId, rangeToClear, clearRequest)
+                    .execute()
 
                 withContext(Dispatchers.Main) {
                     progressDialog.dismiss()
@@ -224,7 +174,7 @@ class bottom_sheet_commit(
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     progressDialog.dismiss()
-                    Log.e("CommitStockError", "Failed to commit stock", e)
+                    Log.e(logTag, "Failed to commit stock", e)
                     Toast.makeText(requireContext(), "Error during commit: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
@@ -232,16 +182,13 @@ class bottom_sheet_commit(
     }
 
     //<editor-fold desc="Helper Functions for Sheets API">
-
-    private suspend fun ensureStockTakingSheetExists(sheetsService: Sheets, spreadsheetId: String, sheetName: String) {
+    private suspend fun ensureSheetExists(sheetsService: Sheets, spreadsheetId: String, sheetName: String) {
         val spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute()
-        val sheetExists = spreadsheet.sheets.any { it.properties.title.equals(sheetName, ignoreCase = true) }
-
-        if (!sheetExists) {
+        if (spreadsheet.sheets.none { it.properties.title.equals(sheetName, ignoreCase = true) }) {
             val addSheetRequest = AddSheetRequest().setProperties(SheetProperties().setTitle(sheetName))
             sheetsService.spreadsheets().batchUpdate(spreadsheetId, BatchUpdateSpreadsheetRequest().setRequests(listOf(Request().setAddSheet(addSheetRequest)))).execute()
 
-            val headers = listOf(listOf("date", "product name", "cost price","Unit Of Measure" ,"(Unit Of Measure) Quantity","(Unit Of Measure) selling price", "stock taking units", "value of the shop", "generated by"))
+            val headers = listOf(listOf("Timestamp", "Barcode", "Product name", "Counted quantity", "Quantity variance", "Unit cost", "Total cost", "Counted By"))
             val headerBody = ValueRange().setValues(headers)
             sheetsService.spreadsheets().values()
                 .update(spreadsheetId, "$sheetName!A1", headerBody)
@@ -251,201 +198,23 @@ class bottom_sheet_commit(
     }
 
     private suspend fun getProductDetailsForCommit(sheetsService: Sheets, spreadsheetId: String, barcode: String): ProductCommitDetails {
-        val productsRange = "Products!A:I"
+        val productsRange = "Products!D:D"
         val productsResponse = sheetsService.spreadsheets().values().get(spreadsheetId, productsRange).execute()
         val allProductRows = productsResponse.getValues()
-        if (allProductRows.isNullOrEmpty()) {
-            throw IllegalStateException("The 'Products' sheet is empty or could not be read.")
-        }
+            ?: throw IllegalStateException("The 'Products' sheet is empty or could not be read.")
 
-        val headerAndDataRows = allProductRows.drop(1)
-        val productRowIndexInFilteredList = headerAndDataRows.indexOfFirst { row ->
-            (row as? List<*>)?.getOrNull(3)?.toString()?.trim() == barcode
-        }
-
-        if (productRowIndexInFilteredList == -1) {
+        val rowIndex = allProductRows.indexOfFirst { row -> row.getOrNull(0)?.toString()?.trim() == barcode }
+        if (rowIndex == -1) {
             throw IllegalStateException("Product with barcode '$barcode' not found in Products sheet for commit.")
         }
-
-        val productData = headerAndDataRows[productRowIndexInFilteredList]
-        val stockInCases = productData.getOrNull(6)?.toString()?.toDoubleOrNull() ?: 0.0
-        val costPrice = productData.getOrNull(8)?.toString()?.toDoubleOrNull() ?: 0.0
-
-        val unitsRange = "unit_measure!A:D"
-        val unitsResponse = sheetsService.spreadsheets().values().get(spreadsheetId, unitsRange).execute()
-        val allUnitRows = unitsResponse.values
-        val unitsForProduct = if (allUnitRows.isNullOrEmpty()) {
-            emptyList()
-        } else {
-            allUnitRows.filter { row ->
-                (row as? List<*>)?.getOrNull(0)?.toString()?.trim() == barcode
-            }
-        }
-
-        val highestUnitValue = unitsForProduct.mapNotNull {
-            val row = it as? List<Any>
-            row?.getOrNull(3)?.toString()?.toIntOrNull()
-        }.maxOrNull() ?: 1
-
-        val sellingPrice = unitsForProduct.firstOrNull()?.let {
-            (it as? List<*>)?.getOrNull(2)?.toString()?.toDoubleOrNull()
-        } ?: 0.0
-
-        val sheetRowNumber = productRowIndexInFilteredList + 2
-
-        return ProductCommitDetails(
-            stockInUnits = stockInCases * highestUnitValue,
-            costPrice = costPrice,
-            sellingPrice = sellingPrice,
-            highestUnitValue = highestUnitValue,
-            productRowIndex = sheetRowNumber
-        )
+        val sheetRowNumber = rowIndex + 1
+        Log.d(logTag, "Found product with barcode '$barcode' at sheet row: $sheetRowNumber")
+        return ProductCommitDetails(productRowIndex = sheetRowNumber)
     }
 
     private fun getSheetId(sheetsService: Sheets, spreadsheetId: String, sheetName: String): Int? {
         val spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute()
         return spreadsheet.sheets.firstOrNull { it.properties.title == sheetName }?.properties?.sheetId
-    }
-
-    private suspend fun fetchProducts(sheetsService: Sheets, spreadsheetId: String): List<Product> {
-        val productsRange = "Products!A2:K"
-        val response = sheetsService.spreadsheets().values().get(spreadsheetId, productsRange).execute()
-        val rawValues = response.values
-
-        if (rawValues.isNullOrEmpty()) {
-            Log.e("FetchProducts", "API returned no rows at all for range $productsRange.")
-            return emptyList()
-        }
-
-        val productList = rawValues.flatMap { it as? List<List<Any>> ?: listOf(it) }.mapNotNull { potentialRow ->
-            val row = potentialRow as? List<*> ?: return@mapNotNull null
-
-            // ✅ --- FIX FOR BARCODE PARSING ---
-            val barcodeValue = row.getOrNull(3)?.toString()?.trim()
-            if (barcodeValue.isNullOrBlank()) {
-                return@mapNotNull null
-            }
-            val barcode = try {
-                BigDecimal(barcodeValue).toPlainString()
-            } catch (e: NumberFormatException) {
-                barcodeValue
-            }
-
-            val locationIdsString = row.getOrNull(9)?.toString() ?: ""
-            val locationIdsList = if (locationIdsString.startsWith("['") && locationIdsString.endsWith("']")) {
-                locationIdsString.removeSurrounding("['", "']").split("', '").filter { it.isNotBlank() }
-            } else if (locationIdsString.startsWith("[") && locationIdsString.endsWith("]")) {
-                locationIdsString.removeSurrounding("[", "]").split(",").map { it.trim() }.filter { it.isNotBlank() }
-            } else {
-                listOf(locationIdsString).filter { it.isNotBlank() }
-            }
-
-            Product(
-                id = row.getOrNull(0)?.toString() ?: "",
-                name = row.getOrNull(1)?.toString() ?: "",
-                imageUrl = row.getOrNull(2)?.toString(),
-                barcode = barcode, // Use cleaned barcode
-                categoryId = row.getOrNull(4)?.toString() ?: "",
-                unit = row.getOrNull(5)?.toString() ?: "",
-                caseQty = row.getOrNull(6)?.toString() ?: "0",
-                minOrder = row.getOrNull(7)?.toString() ?: "0",
-                unitCost = row.getOrNull(8)?.toString() ?: "0.00",
-                locationIds = locationIdsList,
-                expiryDate = row.getOrNull(10)?.toString() ?: ""
-            )
-        }
-
-        if (productList.isEmpty()) {
-            Log.d("FetchProducts", "No products were parsed from the sheet after filtering.")
-        } else {
-            Log.d("FetchProducts", "Successfully parsed ${productList.size} products.")
-        }
-
-        return productList
-    }
-
-    private suspend fun fetchLocations(sheetsService: Sheets, spreadsheetId: String): Map<String, Location> {
-        val locationsRange = "product_location!A2:D"
-        val response = sheetsService.spreadsheets().values().get(spreadsheetId, locationsRange).execute()
-        return response.values?.mapNotNull { rowList ->
-            val row = rowList as? List<*>
-            if (row != null && row.size >= 1) {
-                val id = row.getOrNull(0)?.toString()
-                if (id.isNullOrBlank()) return@mapNotNull null
-                id to Location(
-                    id = id,
-                    aisle = row.getOrNull(1)?.toString() ?: "N/A",
-                    rack = row.getOrNull(2)?.toString() ?: "N/A",
-                    shelf = row.getOrNull(3)?.toString() ?: "N/A"
-                )
-            } else {
-                null
-            }
-        }?.toMap() ?: emptyMap()
-    }
-
-    private suspend fun fetchUnits(sheetsService: Sheets, spreadsheetId: String): Map<String, List<UnitOfMeasure>> {
-        val unitsRange = "unit_measure!A2:H"
-        val response = sheetsService.spreadsheets().values().get(spreadsheetId, unitsRange).execute()
-        val allUnitRows = response.values ?: return emptyMap()
-
-        val allUnits = allUnitRows.mapNotNull { row ->
-            val listRow = row as? List<*> ?: return@mapNotNull null
-
-            // ✅ --- FIX FOR PRODUCT ID PARSING ---
-            val productIdValue = listRow.getOrNull(0)?.toString()?.trim()
-            if (productIdValue.isNullOrBlank()) {
-                return@mapNotNull null
-            }
-            val productId = try {
-                BigDecimal(productIdValue).toPlainString()
-            } catch (e: NumberFormatException) {
-                productIdValue
-            }
-
-            // ✅ --- ADDED LOGGING FOR COLUMN D ---
-            val caseUnitsValue = listRow.getOrNull(3)?.toString() ?: "NULL or BLANK"
-            Log.d("FetchUnitsDebug", "Processing row for productId: $productId. Raw caseUnits (Col D): '$caseUnitsValue'")
-
-
-            UnitOfMeasure(
-                productId = productId, // Use cleaned product ID
-                unitBarcode = listRow.getOrNull(1)?.toString() ?: "",
-                sellingPrice = listRow.getOrNull(2)?.toString() ?: "0.00",
-                caseUnits = listRow.getOrNull(3)?.toString() ?: "1", // This correctly reads Column D
-                quantityDescription = listRow.getOrNull(4)?.toString() ?: "Unit",
-                cost = listRow.getOrNull(5)?.toString(),
-                updatedBy = listRow.getOrNull(6)?.toString(),
-                timestamp = listRow.getOrNull(7)?.toString()
-            )
-        }
-        val unitsMap = allUnits.groupBy { it.productId!! }
-        Log.d("FetchUnits", "Created unitsMap with keys: ${unitsMap.keys}")
-        return unitsMap
-    }
-
-    private suspend fun fetchCountedQuantities(sheetsService: Sheets, spreadsheetId: String): Map<String, Int> {
-        val map = mutableMapOf<String, Int>()
-        val countDataRange = "countData!B2:E"
-        val response = sheetsService.spreadsheets().values().get(spreadsheetId, countDataRange).execute()
-        response.values?.forEach { rowList ->
-            val row = rowList as? List<*> ?: return@forEach
-
-            // ✅ --- FIX FOR BARCODE PARSING IN COUNT DATA ---
-            val barcodeValue = row.getOrNull(0)?.toString()?.trim()
-            if (barcodeValue.isNullOrBlank()) {
-                return@forEach
-            }
-            val barcode = try {
-                BigDecimal(barcodeValue).toPlainString()
-            } catch (e: NumberFormatException) {
-                barcodeValue
-            }
-
-            val quantity = row.getOrNull(3)?.toString()?.toIntOrNull() ?: 0
-            map[barcode] = map.getOrDefault(barcode, 0) + quantity
-        }
-        return map
     }
 
     private fun getDriveService(account: GoogleSignInAccount): Drive {
@@ -461,7 +230,6 @@ class bottom_sheet_commit(
         return Sheets.Builder(GoogleNetHttpTransport.newTrustedTransport(), GsonFactory.getDefaultInstance(), credential)
             .setApplicationName("Nia Bridge App").build()
     }
-
     private suspend fun findSheetIdByName(driveService: Drive, name: String): String? = withContext(Dispatchers.IO) {
         val query = "name='$name' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"
         val result = driveService.files().list().setQ(query).setSpaces("drive").setCorpus("user")

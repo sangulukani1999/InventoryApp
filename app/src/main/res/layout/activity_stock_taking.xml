@@ -94,21 +94,22 @@
     </androidx.cardview.widget.CardView>
 
     <FrameLayout
-        android:layout_marginTop="60dp"
+        android:id="@+id/frameLayout2"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="60dp"
         android:clipChildren="false"
         android:clipToPadding="false"
-        app:layout_constraintTop_toBottomOf="@+id/cardView"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintTop_toBottomOf="@+id/cardView">
 
         <!-- Background bar fixed at bottom -->
         <View
             android:layout_width="match_parent"
             android:layout_height="40dp"
             android:layout_gravity="bottom"
-            android:background="@drawable/tab_background"/>
+            android:background="@drawable/tab_background" />
 
         <!-- Actual tabs -->
         <com.google.android.material.tabs.TabLayout
@@ -119,18 +120,18 @@
             android:clipChildren="false"
             android:clipToPadding="false"
             app:tabIndicatorHeight="0dp"
-            app:tabRippleColor="@android:color/transparent"/>
+            app:tabRippleColor="@android:color/transparent" />
     </FrameLayout>
 
 
     <androidx.viewpager2.widget.ViewPager2
         android:id="@+id/ViewPager"
         android:layout_width="0dp"
-        android:layout_height="500dp"
+        android:layout_height="0dp"
         app:layout_constraintBottom_toTopOf="@+id/varianceAdd"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/tabLayout">
+        app:layout_constraintTop_toBottomOf="@+id/frameLayout2">
 
     </androidx.viewpager2.widget.ViewPager2>
 

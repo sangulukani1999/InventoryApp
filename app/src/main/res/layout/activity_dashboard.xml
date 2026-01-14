@@ -29,7 +29,7 @@
             app:layout_constraintEnd_toStartOf="@+id/cardView8"
             app:layout_constraintHorizontal_bias="0.5"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/cardView2">
+            app:layout_constraintTop_toBottomOf="@+id/transactions">
 
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"
@@ -76,74 +76,26 @@
                 android:layout_height="match_parent">
 
                 <ImageView
-                    android:id="@+id/imageView"
-                    android:layout_width="25dp"
-                    android:layout_height="25dp"
-                    android:layout_marginTop="16dp"
-                    android:layout_marginEnd="32dp"
+                    android:id="@+id/users"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginEnd="16dp"
+                    app:layout_constraintBottom_toBottomOf="parent"
                     app:layout_constraintEnd_toEndOf="parent"
                     app:layout_constraintTop_toTopOf="parent"
-                    tools:srcCompat="@drawable/power" />
-
-                <ImageView
-                    android:id="@+id/imageView2"
-                    android:layout_width="25dp"
-                    android:layout_height="25dp"
-                    android:layout_marginEnd="32dp"
-                    app:layout_constraintBottom_toBottomOf="@+id/imageView"
-                    app:layout_constraintEnd_toStartOf="@+id/imageView"
-                    app:layout_constraintTop_toTopOf="@+id/imageView"
-                    app:layout_constraintVertical_bias="1.0"
-                    app:srcCompat="@drawable/settings" />
-
-                <ImageButton
-                    android:id="@+id/reload_btn"
-                    android:layout_width="30dp"
-                    android:layout_height="30dp"
-                    android:layout_marginEnd="32dp"
-                    android:background="@android:color/transparent"
-                    app:layout_constraintBottom_toBottomOf="@+id/imageView2"
-                    app:layout_constraintEnd_toStartOf="@+id/imageView2"
-                    app:layout_constraintTop_toTopOf="@+id/imageView2"
-                    app:srcCompat="@drawable/sync" />
-
-                <TextView
-                    android:id="@+id/textView"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="Power"
-                    android:textColor="@color/white"
-                    android:textSize="7.2sp"
-                    android:textStyle="normal"
-                    app:layout_constraintEnd_toEndOf="@+id/imageView"
-                    app:layout_constraintStart_toStartOf="@+id/imageView"
-                    app:layout_constraintTop_toBottomOf="@+id/imageView" />
+                    app:srcCompat="@drawable/profile_placeholder" />
 
                 <TextView
                     android:id="@+id/textView2"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="Settings"
+                    android:text="Users"
                     android:textColor="@color/white"
                     android:textSize="7.2sp"
                     android:textStyle="normal"
-                    app:layout_constraintEnd_toEndOf="@+id/imageView2"
-                    app:layout_constraintStart_toStartOf="@+id/imageView2"
-                    app:layout_constraintTop_toBottomOf="@+id/imageView2" />
-
-                <TextView
-                    android:id="@+id/textView3"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Sync"
-                    android:textColor="@color/white"
-                    android:textSize="7.2sp"
-                    android:textStyle="normal"
-                    app:layout_constraintEnd_toEndOf="@+id/reload_btn"
-                    app:layout_constraintStart_toStartOf="@+id/reload_btn"
-                    app:layout_constraintTop_toBottomOf="@+id/reload_btn" />
+                    app:layout_constraintEnd_toEndOf="@+id/users"
+                    app:layout_constraintStart_toStartOf="@+id/users"
+                    app:layout_constraintTop_toBottomOf="@+id/users" />
 
                 <ImageView
                     android:id="@+id/profileImage"
@@ -172,7 +124,7 @@
         </androidx.cardview.widget.CardView>
 
         <androidx.cardview.widget.CardView
-            android:id="@+id/cardView2"
+            android:id="@+id/transactions"
             android:layout_width="104dp"
             android:layout_height="146dp"
             android:layout_marginTop="60dp"
@@ -229,7 +181,7 @@
             app:layout_constraintEnd_toStartOf="@+id/cashTrackerBtn"
             app:layout_constraintHorizontal_bias="0.5"
             app:layout_constraintStart_toEndOf="@+id/purchaseRequisition"
-            app:layout_constraintTop_toBottomOf="@+id/cardView2">
+            app:layout_constraintTop_toBottomOf="@+id/transactions">
 
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"
@@ -284,7 +236,7 @@
             android:focusable="true"
             android:foreground="?attr/selectableItemBackground"
             app:cardCornerRadius="7dp"
-            app:layout_constraintEnd_toStartOf="@+id/cardView2"
+            app:layout_constraintEnd_toStartOf="@+id/transactions"
             app:layout_constraintHorizontal_bias="0.5"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@+id/cardView">
@@ -331,7 +283,7 @@
             app:cardCornerRadius="7dp"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintHorizontal_bias="0.5"
-            app:layout_constraintStart_toEndOf="@+id/cardView2"
+            app:layout_constraintStart_toEndOf="@+id/transactions"
             app:layout_constraintTop_toBottomOf="@+id/cardView">
 
             <androidx.constraintlayout.widget.ConstraintLayout
@@ -392,7 +344,7 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintHorizontal_bias="0.5"
             app:layout_constraintStart_toEndOf="@+id/cardView8"
-            app:layout_constraintTop_toBottomOf="@+id/cardView2">
+            app:layout_constraintTop_toBottomOf="@+id/transactions">
 
             <androidx.constraintlayout.widget.ConstraintLayout
                 android:layout_width="match_parent"

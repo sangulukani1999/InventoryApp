@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="User Email Address"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/email_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="user@example.com"
+            android:inputType="textEmailAddress" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Assign Roles"
+            android:textStyle="bold" />
+
+        <CheckBox
+            android:id="@+id/role_stock_module"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Stock Module" />
+
+        <CheckBox
+            android:id="@+id/role_transactions_module"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Transactions module" />
+
+        <CheckBox
+            android:id="@+id/role_grn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="GRN (Goods Received Note)" />
+
+        <CheckBox
+            android:id="@+id/role_purchase_requisition"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Purchase Requisition" />
+
+        <CheckBox
+            android:id="@+id/role_physical_inventory"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Physical Inventory" />
+
+        <CheckBox
+            android:id="@+id/role_cash_tracker"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Cash Tracker" />
+
+    </LinearLayout>
+</ScrollView>

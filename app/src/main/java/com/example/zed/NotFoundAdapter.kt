@@ -70,7 +70,7 @@ class NotFoundAdapter(
 
                 if (unitsForThisProduct.isNotEmpty()) {
                     val highestUnit = unitsForThisProduct.mapNotNull { it.caseUnits.toIntOrNull() }.maxOrNull() ?: 1
-                    totalStockInUnits = stockInCases * highestUnit
+                    totalStockInUnits = stockInCases
                     val largestUnitDescription = unitsForThisProduct.maxByOrNull { it.caseUnits.toIntOrNull() ?: 1 }
                     productQtyDescription.text = largestUnitDescription?.quantityDescription ?: "units"
                 } else {

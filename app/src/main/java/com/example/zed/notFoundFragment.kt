@@ -231,15 +231,13 @@ class notFoundFragment : Fragment() {
                     // --- Prepare all necessary data for this one product ---
                     val locationsForThisProduct = product.locationIds.mapNotNull { locationId -> locationMap[locationId] }
                     val unitsForThisProduct = unitsMap[product.barcode] ?: emptyList()
-                    val stockInCases = product.caseQty.toDoubleOrNull() ?: 0.0
-                    val totalStockInUnits = if (unitsForThisProduct.isNotEmpty()) {
-                        val highestUnit = unitsForThisProduct.mapNotNull { it.caseUnits.toIntOrNull() }.maxOrNull() ?: 1
-                        stockInCases * highestUnit
-                    } else {
-                        stockInCases
-                    }
+
+                    // ✅ --- CORRECTED LOGIC ---
+                    // Directly use caseQty from the Products sheet for the expected stock count.
+                    val totalStockInUnits = product.caseQty.toDoubleOrNull() ?: 0.0
                     val countedQty = countedQuantitiesMap.getOrDefault(product.barcode, 0)
                     val variance = totalStockInUnits - countedQty
+                    // ✅ --- END OF CORRECTION ---
 
                     // --- Determine if all its locations have been counted ---
                     val allLocationsCounted = if (locationsForThisProduct.isEmpty()) {

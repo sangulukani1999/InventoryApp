@@ -261,23 +261,130 @@ class stockTaking : AppCompatActivity() {
         suggestionAdapter.changeCursor(newCursor)
     }
 
+    // In stockTaking.kt
+
     private fun handleVarianceAddClick() {
         val currentUser = Firebase.auth.currentUser
         if (currentUser?.email == null) {
-            Toast.makeText(this, "Cannot add item: User not signed in.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Cannot commit: User not signed in.", Toast.LENGTH_SHORT).show()
             return
         }
         val userEmail = currentUser.email!!
-        checkUserRole(userEmail) { exists, parentEmail ->
-            if (exists) {
-                bottom_sheet_commit(userEmail, parentEmail) {
-                    // Refresh data after commit if needed
-                }.show(supportFragmentManager, "CommitBottomSheet")
-            } else {
-                Toast.makeText(this, "Access denied. User not found in registry.", Toast.LENGTH_LONG).show()
+
+        val progressDialog = ProgressDialog(this).apply {
+            setMessage("Preparing commit data...")
+            setCancelable(false)
+            show()
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val account = GoogleSignIn.getLastSignedInAccount(this@stockTaking)
+                    ?: throw IllegalStateException("User is not signed in.")
+
+                val sheetsService = getSheetsService(account)
+                val driveService = getDriveService(account)
+                val spreadsheetId = findSheetIdByName(driveService, "nia-bridge data")
+                    ?: throw IllegalStateException("Spreadsheet 'nia-bridge data' not found.")
+
+                // Fetch all data needed for the review sheet
+                val products = fetchProductsForCommit(sheetsService, spreadsheetId)
+                val countedQuantities = fetchCountedQuantitiesForCommit(sheetsService, spreadsheetId)
+                val productsMap = products.associateBy { it.barcode }
+                val allReviewItems = mutableListOf<CommitItem>()
+
+                for ((barcode, countedData) in countedQuantities) {
+                    val product = productsMap[barcode] ?: continue
+                    val countedQty = countedData.first
+                    val countedBy = countedData.second
+                    val systemStock = product.caseQty.toDoubleOrNull() ?: 0.0
+                    val variance = countedQty.toDouble() - systemStock
+
+                    allReviewItems.add(
+                        CommitItem(
+                            productName = product.name,
+                            barcode = product.barcode,
+                            imageUrl = product.imageUrl,
+                            variance = variance,
+                            countedQty = countedQty,
+                            unitCost = product.unitCost.toDoubleOrNull() ?: 0.0,
+                            locations = emptyList(),
+                            countedBy = countedBy
+                        )
+                    )
+                }
+
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    if (allReviewItems.isEmpty()) {
+                        Toast.makeText(this@stockTaking, "No counted items found to review.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        // This function provides the parentEmail, which can be null
+                        checkUserRole(userEmail) { exists, parentEmail ->
+                            if (exists) {
+                                bottom_sheet_commit(
+                                    userEmail = userEmail,
+                                    parentEmail = parentEmail, // Pass the parentEmail, which can be null
+                                    initialItems = allReviewItems,
+                                    onStockAdded = {
+                                        // Refresh data after commit
+                                        // You might need to call a function here to reload the inventory list
+                                    }
+                                ).show(supportFragmentManager, "CommitBottomSheet")
+                            } else {
+                                Toast.makeText(this@stockTaking, "Access denied. User not found in registry.", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    Log.e("handleVarianceAddClick", "Error preparing commit: ${e.message}", e)
+                    Toast.makeText(this@stockTaking, "Error preparing commit: ${e.message}", Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
+
+    // You also need to add these helper functions to stockTaking.kt
+    private suspend fun fetchProductsForCommit(sheetsService: Sheets, spreadsheetId: String): List<Product> {
+        val productsRange = "Products!A:K"
+        val response = sheetsService.spreadsheets().values().get(spreadsheetId, productsRange).execute()
+        val values = response.getValues() ?: return emptyList()
+        return values.drop(1).mapNotNull { row ->
+            val barcode = row.getOrNull(3)?.toString()?.trim()
+            if (barcode.isNullOrBlank()) return@mapNotNull null
+            Product(
+                id = row.getOrNull(0)?.toString() ?: "", name = row.getOrNull(1)?.toString() ?: "",
+                imageUrl = row.getOrNull(2)?.toString(), barcode = barcode,
+                caseQty = row.getOrNull(6)?.toString() ?: "0", unitCost = row.getOrNull(8)?.toString() ?: "0.00",
+                categoryId = "", unit = "", minOrder = "", expiryDate = "", locationIds = emptyList()
+            )
+        }
+    }
+
+    private suspend fun fetchCountedQuantitiesForCommit(sheetsService: Sheets, spreadsheetId: String): Map<String, Pair<Int, String>> {
+        val map = mutableMapOf<String, Pair<Int, String>>()
+        val countDataRange = "countData!B:F"
+        try {
+            val response = sheetsService.spreadsheets().values().get(spreadsheetId, countDataRange).execute()
+            val values = response.getValues()?.drop(1)
+            values?.forEach { row ->
+                val barcode = row.getOrNull(0)?.toString()?.trim()
+                val quantity = row.getOrNull(3)?.toString()?.toIntOrNull() ?: 0
+                val user = row.getOrNull(4)?.toString()?.trim() ?: "unknown"
+                if (!barcode.isNullOrBlank()) {
+                    val current = map.getOrDefault(barcode, Pair(0, user))
+                    map[barcode] = Pair(current.first + quantity, user)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("fetchCountedQuantities", "Could not fetch from countData: ${e.message}")
+        }
+        return map
+    }
+
 
     private fun validateBarcodeAndNavigate(barcode: String) {
         if (barcode.isBlank()) {
