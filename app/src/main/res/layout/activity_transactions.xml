@@ -11,7 +11,7 @@
     <androidx.cardview.widget.CardView
         android:id="@+id/cardView"
         android:layout_width="0dp"
-        android:layout_height="70dp"
+        android:layout_height="100dp"
         app:cardBackgroundColor="#0071c1"
         app:cardElevation="5dp"
         app:layout_constraintEnd_toEndOf="parent"
@@ -26,11 +26,11 @@
                 android:id="@+id/reload_btn"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="-6dp"
                 android:layout_marginEnd="16dp"
                 android:background="@android:color/transparent"
                 app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintTop_toTopOf="parent"
+                app:layout_constraintTop_toTopOf="@+id/Transacrions"
                 app:srcCompat="@drawable/sync" />
 
             <TextView
@@ -53,20 +53,19 @@
                 android:textColor="#fff"
                 android:textSize="14sp"
                 android:textStyle="normal"
-                app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
+                app:layout_constraintTop_toTopOf="@+id/backBtnPhysicalInventory" />
 
             <ImageButton
                 android:id="@+id/backBtnPhysicalInventory"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="16dp"
+                android:layout_marginBottom="32dp"
                 android:background="@android:color/transparent"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent"
                 app:srcCompat="@drawable/back_icon" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>
@@ -212,7 +211,7 @@
         app:layout_constraintTop_toBottomOf="@+id/DepletedItem" />
 
     <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/goods_recieved_note_recycler_view"
+        android:id="@+id/transactionsRecyclerView"
         android:layout_width="0dp"
         android:layout_height="0dp"
         app:layout_constraintBottom_toTopOf="@+id/cardView2"
@@ -223,11 +222,11 @@
     <androidx.cardview.widget.CardView
         android:id="@+id/cardView2"
         android:layout_width="0dp"
-        android:layout_height="40dp"
+        android:layout_height="80dp"
         app:cardBackgroundColor="#0071c1"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" >
+        app:layout_constraintStart_toStartOf="parent">
 
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
@@ -238,10 +237,10 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="16dp"
+                android:layout_marginTop="16dp"
                 android:text="Sales: 0"
                 android:textColor="#fff"
                 android:textSize="11sp"
-                app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="parent" />
 
@@ -253,9 +252,8 @@
                 android:text="Profit: 0"
                 android:textColor="#fff"
                 android:textSize="11sp"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
+                app:layout_constraintBottom_toBottomOf="@+id/textView54"
+                app:layout_constraintEnd_toEndOf="parent" />
 
             <TextView
                 android:id="@+id/textView54"
@@ -264,10 +262,9 @@
                 android:text="Capital: 0"
                 android:textColor="#fff"
                 android:textSize="11sp"
-                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintBottom_toBottomOf="@+id/textView"
                 app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent" />
+                app:layout_constraintStart_toStartOf="parent" />
         </androidx.constraintlayout.widget.ConstraintLayout>
     </androidx.cardview.widget.CardView>
 

@@ -1,40 +1,50 @@
 package com.example.zed
 
-import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
-import android.widget.ImageButton
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
-import androidx.cardview.widget.CardView
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import com.example.zed.databinding.ActivityPhysicalInventoryBinding // 1. Import the binding class
 
 class PhysicalInventory : AppCompatActivity() {
-    @SuppressLint("MissingInflatedId")
+
+    private lateinit var binding: ActivityPhysicalInventoryBinding // 2. Declare a binding variable
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContentView(R.layout.activity_physical_inventory)
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
+
+        // 3. Inflate the layout using the binding class
+        binding = ActivityPhysicalInventoryBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        ViewCompat.setOnApplyWindowInsetsListener(binding.main) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
 
-        // Handle back button click
-        val backButton = findViewById<ImageButton>(R.id.backBtnPhysicalInventory)
-        backButton.setOnClickListener {
-            val intent = Intent(this, signup_dashboard_activity::class.java)
+        // --- Use the binding object to access views ---
+
+        // ✅ CORRECTED: Handle back button click by finishing the current activity
+        binding.backBtnPhysicalInventory.setOnClickListener {
+            finish() // This correctly closes the current screen and goes back.
+        }
+
+        // Set click listener for the stock taking CardView
+        binding.stockTakingView.setOnClickListener {
+            val intent = Intent(this, stockTaking::class.java)
             startActivity(intent)
         }
 
-        // Add this part to handle the click
-        val cardView8 = findViewById<CardView>(R.id.stockTakingView)
-        cardView8.setOnClickListener {
-            val intent = Intent(this, stockTaking::class.java)
+        // Set click listener for the stock summary report CardView
+        binding.stockSummaryReport.setOnClickListener {
+            // This will now work because the Activity is declared in the manifest
+            val intent = Intent(this, stockSummaryReport::class.java)
             startActivity(intent)
         }
 
@@ -42,23 +52,16 @@ class PhysicalInventory : AppCompatActivity() {
     }
 
     private fun setupSystemBars() {
-        // Parse the color from the hex string
         val brandColor = Color.parseColor("#0071c1")
         val brandColorNavigation = Color.parseColor("#f4f6ff")
 
-
-
-        // Set the status bar color
         window.statusBarColor = brandColor
-        // Set the navigation bar color
         window.navigationBarColor = brandColorNavigation
 
-        // Tell the system that the status bar background is dark, so it should use light (white) icons
+        // Status bar has a dark background, so icons should be light (false)
         WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
 
-        // It's also good practice to define the navigation bar icon color explicitly.
-        // `false` means the navigation bar background is dark, so icons should be light.
-        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = false
+        // ✅ CORRECTED: Navigation bar has a light background, so icons must be dark (true)
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = true
     }
-
 }
