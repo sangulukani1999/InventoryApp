@@ -19,5 +19,31 @@
         <item name="android:textSize">11sp</item>
     </style>
 
+    <!-- Add these styles -->
+    <style name="FinancialLabel">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginStart">16dp</item>
+        <item name="android:textColor">@android:color/black</item>
+        <item name="android:textSize">16sp</item>
+    </style>
+
+    <style name="FinancialLabel.Bold" parent="FinancialLabel">
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="FinancialFigure">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginEnd">16dp</item>
+        <item name="android:textColor">@android:color/black</item>
+        <item name="android:textSize">16sp</item>
+    </style>
+
+    <style name="FinancialFigure.Bold" parent="FinancialFigure">
+        <item name="android:textStyle">bold</item>
+    </style>
+
+
 
 </resources>
