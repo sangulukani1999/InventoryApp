@@ -71,53 +71,14 @@
 
     </androidx.cardview.widget.CardView>
 
-    <EditText
-        android:id="@+id/openingBalance"
-        android:layout_width="0dp"
-        android:layout_height="24dp"
-        android:layout_marginStart="16dp"
-        android:layout_marginTop="16dp"
-        android:layout_marginEnd="16dp"
-        android:background="@drawable/spinner_border"
-        android:ems="10"
-        android:hint="Opening Balance"
-        android:inputType="number"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:textColor="#0071c1"
-        android:textColorHint="#0071c1"
-        android:textSize="9sp"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/cardView" />
-
-    <EditText
-        android:id="@+id/closingBalance"
-        android:layout_width="0dp"
-        android:layout_height="24dp"
-        android:layout_marginTop="16dp"
-        android:background="@drawable/spinner_border"
-        android:ems="10"
-        android:hint="Closing Balance"
-        android:inputType="number"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:textColor="#0071c1"
-        android:textColorHint="#0071c1"
-        android:textSize="9sp"
-        app:layout_constraintEnd_toEndOf="@+id/openingBalance"
-        app:layout_constraintStart_toStartOf="@+id/openingBalance"
-        app:layout_constraintTop_toBottomOf="@+id/openingBalance" />
-
     <FrameLayout
         android:id="@+id/frameLayout"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
         android:clipChildren="false"
         android:clipToPadding="false"
-        app:layout_constraintEnd_toEndOf="@+id/closingBalance"
-        app:layout_constraintStart_toStartOf="@+id/closingBalance"
-        app:layout_constraintTop_toBottomOf="@+id/closingBalance">
+        app:layout_constraintTop_toBottomOf="@+id/cardView">
 
         <!-- Background bar fixed at bottom -->
         <View
@@ -143,6 +104,8 @@
         android:id="@+id/tabContent"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
