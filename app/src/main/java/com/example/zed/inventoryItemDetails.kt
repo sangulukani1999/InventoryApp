@@ -114,6 +114,7 @@ class InventoryItemDetails : AppCompatActivity() {
      * Sets up click listeners for the UI elements on THIS screen.
      */
     private fun setupClickListeners() {
+        binding.backBtnPhysicalInventory.setOnClickListener { finish() }
         // Listener for the primary action: adding a new count entry.
         binding.addConstraint.setOnClickListener {
             showAddEntryDialog()
@@ -272,6 +273,11 @@ class InventoryItemDetails : AppCompatActivity() {
     /**
      * Validates a scanned barcode against the local product list before navigating.
      */
+    // In inventoryItemDetails.kt
+
+    /**
+     * Validates a scanned barcode against the local product list before navigating.
+     */
     private fun validateBarcodeAndNavigate(barcode: String) {
         if (barcode == binding.itemBarcode.text.toString()) {
             Toast.makeText(this, "This product is already loaded.", Toast.LENGTH_SHORT).show()
@@ -289,9 +295,15 @@ class InventoryItemDetails : AppCompatActivity() {
                 Toast.makeText(this@InventoryItemDetails, "Product found. Loading details...", Toast.LENGTH_SHORT).show()
                 val intent = Intent(this@InventoryItemDetails, InventoryItemDetails::class.java).apply {
                     putExtra("inventoryBarcodes", barcode)
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    // ✅ FIX: REMOVED the flags that were clearing the activity stack.
+                    // flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 }
                 startActivity(intent)
+
+                // ✅ Add this finish() call to remove the *current* details screen
+                // from the history, so pressing back doesn't just go to the previous item.
+                finish()
+
             } else {
                 AlertDialog.Builder(this@InventoryItemDetails)
                     .setTitle("Not Found")

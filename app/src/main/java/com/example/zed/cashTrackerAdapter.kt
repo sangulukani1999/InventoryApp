@@ -10,15 +10,17 @@ import com.example.zed.inventory_fragment
 import com.example.zed.location_and_uom
 import com.example.zed.notFoundFragment
 import com.example.zed.stock_fragment
+import com.example.zed.user_report
 
 class cashTrackerAdapter(activity: FragmentActivity) : FragmentStateAdapter(activity) {
-    override fun getItemCount(): Int = 3 // Number of tabs/pages
+    override fun getItemCount(): Int = 4 // Number of tabs/pages
 
     override fun createFragment(position: Int): Fragment {
         return when (position) {
             0 -> expenses()
             1 -> detailsCashTracker()
             2 -> balancing()
+            3 -> user_report()
             else -> stock_fragment()
         }
     }

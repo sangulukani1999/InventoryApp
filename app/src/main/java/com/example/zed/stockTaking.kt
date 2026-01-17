@@ -77,6 +77,7 @@ class stockTaking : AppCompatActivity() {
     }
 
     private fun setupClickListeners() {
+        binding.backBtnPhysicalInventory.setOnClickListener { finish() }
         binding.backBtnPhysicalInventory.setOnClickListener {
             startActivity(Intent(this, PhysicalInventory::class.java))
             finish()

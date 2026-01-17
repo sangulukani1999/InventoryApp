@@ -59,7 +59,8 @@ class cashTracker : AppCompatActivity() {
         val tabs = listOf(
             "Expenses",
             "Details",
-            "Balancing"
+            "Balancing",
+            "User \n Report"
         )
 
         // Use TabLayoutMediator to link the TabLayout and ViewPager2
@@ -68,6 +69,9 @@ class cashTracker : AppCompatActivity() {
             val customTabView = LayoutInflater.from(this).inflate(R.layout.custom_tab_layout, null)
             val tabText = customTabView.findViewById<TextView>(R.id.tabText)
             tabText.text = tabs[position]
+
+            tabText.textSize = 9f
+
             tab.customView = customTabView
         }.attach()
 
