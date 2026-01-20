@@ -8,9 +8,11 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import android.widget.Toast.makeText
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.viewpager2.widget.ViewPager2
 import com.example.zed.databinding.ActivityStockFragmentBinding
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
@@ -35,18 +37,26 @@ import java.io.IOException
 import com.example.zed.Product
 import com.example.zed.Location
 import com.example.zed.UnitOfMeasure
+import com.example.zed.databinding.FragmentInventoryFragmentBinding
+import com.example.zed.stockTaking
+import kotlin.collections.component1
+import kotlin.collections.component2
+import kotlin.collections.iterator
 
 class inventory_fragment : Fragment() {
-    private var _binding: ActivityStockFragmentBinding? = null
+    private var _binding: FragmentInventoryFragmentBinding? = null
     private val binding get() = _binding!!
+
+    private lateinit var viewPager: ViewPager2
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        _binding = ActivityStockFragmentBinding.inflate(inflater, container, false)
-        binding.varianceAdd.visibility = View.GONE
-        binding.StockListRecyclerView.layoutManager = LinearLayoutManager(requireContext())
+        _binding = FragmentInventoryFragmentBinding.inflate(inflater, container, false)
+        //binding.varianceAdd.visibility = View.GONE
+        viewPager = requireActivity().findViewById(R.id.tabContent)
+        binding.inventoryRecyclerView.layoutManager = LinearLayoutManager(requireContext())
         setupClickListeners()
         fetchInventoryData()
         return binding.root
@@ -54,29 +64,263 @@ class inventory_fragment : Fragment() {
 
     private fun setupClickListeners() {
         binding.varianceAdd.setOnClickListener {
-            val currentUser = Firebase.auth.currentUser
-            if (currentUser?.email == null) {
-                Toast.makeText(requireContext(), "Cannot add product: User not signed in.", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            val userEmail = currentUser.email!!
-            val progressDialog = ProgressDialog(requireContext()).apply {
-                setMessage("Verifying user role...")
-                setCancelable(false)
-                show()
-            }
-            checkUserRole(userEmail) { exists, parentEmail ->
-                progressDialog.dismiss()
-                if (exists) {
-                    MyBottomStockSheet(userEmail, parentEmail) {
-                        fetchInventoryData() // Refresh callback
-                    }.show(parentFragmentManager, "MyBottomSheet")
-                } else {
-                    Toast.makeText(requireContext(), "Access denied. User not found in registry.", Toast.LENGTH_LONG).show()
+            handleVarianceAddClick()
+        }
+    }
+
+
+    private fun handleVarianceAddClick() {
+        val currentUser = Firebase.auth.currentUser
+        if (currentUser?.email == null) {
+            // ✅ CORRECT: Use requireContext() to get the context in a Fragment
+            Toast.makeText(requireContext(), "Cannot commit: User not signed in.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val userEmail = currentUser.email!!
+
+        // ✅ CORRECT: Use requireContext() for the ProgressDialog
+        val progressDialog = ProgressDialog(requireContext()).apply {
+            setMessage("Preparing commit data...")
+            setCancelable(false)
+            show()
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // ✅ CORRECT: Use requireContext() when getting the signed-in account
+                val account = GoogleSignIn.getLastSignedInAccount(requireContext())
+                    ?: throw IllegalStateException("User is not signed in.")
+
+                val sheetsService = getSheetsService(account)
+                val driveService = getDriveService(account)
+                val spreadsheetId = findSheetIdByName(driveService, "nia-bridge data")
+                    ?: throw IllegalStateException("Spreadsheet 'nia-bridge data' not found.")
+
+                // Fetch all data needed for the review sheet
+                val products = fetchProductsForCommit(sheetsService, spreadsheetId)
+                val countedQuantities = fetchCountedQuantitiesForCommit(sheetsService, spreadsheetId)
+                val productsMap = products.associateBy { it.barcode }
+                val allReviewItems = mutableListOf<CommitItem>()
+
+                for ((barcode, countedData) in countedQuantities) {
+                    val product = productsMap[barcode] ?: continue
+                    val countedQty = countedData.first
+                    val countedBy = countedData.second
+                    val systemStock = product.caseQty.toDoubleOrNull() ?: 0.0
+                    val variance = countedQty.toDouble() - systemStock
+
+                    allReviewItems.add(
+                        CommitItem(
+                            productName = product.name,
+                            barcode = product.barcode,
+                            imageUrl = product.imageUrl,
+                            variance = variance,
+                            countedQty = countedQty,
+                            unitCost = product.unitCost.toDoubleOrNull() ?: 0.0,
+                            locations = emptyList(),
+                            countedBy = countedBy
+                        )
+                    )
+                }
+
+
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    if (allReviewItems.isEmpty()) {
+                        // ✅ CORRECT: Use requireContext() here as well
+                        Toast.makeText(requireContext(), "No counted items found to review.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        // This function provides the parentEmail, which can be null
+                        checkUserRole(userEmail) { exists, parentEmail ->
+                            if (exists) {
+                                bottom_sheet_commit(
+                                    userEmail = userEmail,
+                                    parentEmail = parentEmail, // Pass the parentEmail, which can be null
+                                    initialItems = allReviewItems,
+                                    onStockAdded = {
+                                        // Refresh data after commit
+                                        // You might need to call a function here to reload the inventory list
+                                    }
+                                    // ✅ CORRECT: Use parentFragmentManager in a Fragment
+                                ).show(parentFragmentManager, "CommitBottomSheet")
+                            } else {
+                                // ✅ CORRECT: Use requireContext()
+                                Toast.makeText(requireContext(), "Access denied. User not found in registry.", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    Log.e("handleVarianceAddClick", "Error preparing commit: ${e.message}", e)
+                    // ✅ CORRECT: Use requireContext() for error messages
+                    Toast.makeText(requireContext(), "Error preparing commit: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }
     }
+    // ✅ --- START: NEW LOGIC TO PRE-LOAD DATA FOR COMMIT SHEET ---
+    private suspend fun fetchCountedQuantitiesForCommit(sheetsService: Sheets, spreadsheetId: String): Map<String, Pair<Int, String>> {
+        val map = mutableMapOf<String, Pair<Int, String>>()
+        val countDataRange = "countData!B:F"
+        try {
+            val response = sheetsService.spreadsheets().values().get(spreadsheetId, countDataRange).execute()
+            val values = response.getValues()?.drop(1)
+            values?.forEach { row ->
+                val barcode = row.getOrNull(0)?.toString()?.trim()
+                val quantity = row.getOrNull(3)?.toString()?.toIntOrNull() ?: 0
+                val user = row.getOrNull(4)?.toString()?.trim() ?: "unknown"
+                if (!barcode.isNullOrBlank()) {
+                    val current = map.getOrDefault(barcode, Pair(0, user))
+                    map[barcode] = Pair(current.first + quantity, user)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("fetchCountedQuantities", "Could not fetch from countData: ${e.message}")
+        }
+        return map
+    }
+
+    private fun initiateCommitProcess() {
+        val currentUser = Firebase.auth.currentUser
+        if (currentUser?.email == null) {
+            Toast.makeText(requireContext(), "Cannot commit: User not signed in.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val userEmail = currentUser.email!!
+
+        val progressDialog = ProgressDialog(requireContext()).apply {
+            setMessage("Preparing commit data...")
+            setCancelable(false)
+            show()
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val logTag = "CommitPrep"
+                Log.d(logTag, "====== STARTING COMMIT PREPARATION ======")
+
+                val account = GoogleSignIn.getLastSignedInAccount(requireContext())
+                    ?: throw IllegalStateException("User is not signed in.")
+
+                val sheetsService = getSheetsService(account)
+                val driveService = getDriveService(account)
+                val spreadsheetId = findSheetIdByName(driveService, "nia-bridge data")
+                    ?: throw IllegalStateException("Spreadsheet 'nia-bridge data' not found.")
+                Log.d(logTag, "Found Spreadsheet ID: $spreadsheetId")
+
+                // 1. Fetch data required for the commit sheet
+                val products = fetchProductsForCommit(sheetsService, spreadsheetId)
+                val countedQuantities = fetchCountedQuantities(sheetsService, spreadsheetId)
+                val productsMap = products.associateBy { it.barcode }
+
+                val allReviewItems = mutableListOf<CommitItem>()
+                Log.d(logTag, "Processing ${countedQuantities.size} items from 'countData'.")
+
+                // 2. Process and create the list of CommitItems
+                for ((barcode, countedData) in countedQuantities) {
+                    val product = productsMap[barcode] ?: continue
+                    val countedQty = countedData.first
+                    val countedBy = countedData.second
+                    val systemStock = product.caseQty.toDoubleOrNull() ?: 0.0
+                    val variance = countedQty.toDouble() - systemStock
+
+                    allReviewItems.add(
+                        CommitItem(
+                            productName = product.name,
+                            barcode = product.barcode,
+                            imageUrl = product.imageUrl,
+                            variance = variance,
+                            countedQty = countedQty,
+                            unitCost = product.unitCost.toDoubleOrNull() ?: 0.0,
+                            locations = emptyList(), // Location data is not needed in the commit sheet display itself
+                            countedBy = countedBy
+                        )
+                    )
+                }
+
+                Log.d(logTag, "Finished preparation. Found ${allReviewItems.size} items to review.")
+
+                // 3. Switch to Main thread to show the bottom sheet
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    if (allReviewItems.isEmpty()) {
+                        Toast.makeText(requireContext(), "No counted items found to review.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        // 4. ✅ Show the bottom sheet WITH the pre-fetched data
+                        bottom_sheet_commit(
+                            userEmail = userEmail,
+                            parentEmail = null, // Adjust if needed
+                            initialItems = allReviewItems, // Pass the prepared data
+                            onStockAdded = { fetchInventoryData() } // The refresh callback remains
+                        ).show(parentFragmentManager, "CommitBottomSheet")
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    Log.e("CommitPrep", "Error during commit preparation", e)
+                    Toast.makeText(context, "Error preparing commit: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+
+    // ✅ --- HELPER FUNCTIONS MOVED HERE FROM bottom_sheet_commit.kt ---
+
+    private suspend fun fetchProductsForCommit(sheetsService: Sheets, spreadsheetId: String): List<Product> {
+        val productsRange = "Products!A2:K"
+        val response = sheetsService.spreadsheets().values().get(spreadsheetId, productsRange).execute()
+
+        // ✅ CORRECTED: Explicitly use .getValues() and check for null/empty
+        val values = response.getValues()
+        if (values.isNullOrEmpty()) {
+            Log.w("CommitPrep", "fetchProductsForCommit: No data found in 'Products' sheet.")
+            return emptyList()
+        }
+
+        return values.mapNotNull { row ->
+            val barcodeValue = row.getOrNull(3)?.toString()?.trim()
+            if (barcodeValue.isNullOrBlank()) return@mapNotNull null
+            Product(
+                id = row.getOrNull(0)?.toString() ?: "", name = row.getOrNull(1)?.toString() ?: "",
+                imageUrl = row.getOrNull(2)?.toString(), barcode = barcodeValue,
+                caseQty = row.getOrNull(6)?.toString() ?: "0", unitCost = row.getOrNull(8)?.toString() ?: "0.00",
+                locationIds = emptyList(), categoryId = "", unit = "", minOrder = "", expiryDate = ""
+            )
+        }
+    }
+
+    private suspend fun fetchCountedQuantities(sheetsService: Sheets, spreadsheetId: String): Map<String, Pair<Int, String>> {
+        val map = mutableMapOf<String, Pair<Int, String>>()
+        val countDataRange = "countData!B:F" // Barcode (B) to User Email (F)
+        try {
+            val response = sheetsService.spreadsheets().values().get(spreadsheetId, countDataRange).execute()
+
+            // ✅ CORRECTED: Explicitly use .getValues() and check for null
+            val values = response.getValues()
+
+            if (values != null && values.isNotEmpty()) {
+                values.drop(1).forEach { row ->
+                    val barcode = row.getOrNull(0)?.toString()?.trim()
+                    val quantity = row.getOrNull(3)?.toString()?.toIntOrNull() ?: 0
+                    val user = row.getOrNull(4)?.toString()?.trim() ?: "unknown"
+
+                    if (!barcode.isNullOrBlank()) {
+                        val current = map.getOrDefault(barcode, Pair(0, user))
+                        map[barcode] = Pair(current.first + quantity, user)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("CommitPrep", "Could not fetch from countData sheet, it might not exist yet. ${e.message}")
+        }
+        return map
+    }
+
+    // ✅ --- END: NEW LOGIC ---
 
     private fun checkUserRole(email: String, callback: (exists: Boolean, parentEmail: String?) -> Unit) {
         val client = OkHttpClient()
@@ -303,7 +547,7 @@ class inventory_fragment : Fragment() {
                         context = requireContext(),
                         countedItems = countedItemsSet,
                     )
-                    binding.StockListRecyclerView.adapter = adapter
+                    binding.inventoryRecyclerView.adapter = adapter
                     Log.d(logTag, "====== INVENTORY FETCH AND DISPLAY COMPLETE ======")
                 }
 

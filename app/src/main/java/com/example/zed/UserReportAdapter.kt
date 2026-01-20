@@ -11,9 +11,7 @@ import java.util.Locale
 
 class UserReportAdapter(
     private var userReports: List<UserReportData>,
-    // ✅ 1. Add isAdmin flag
     private val isAdmin: Boolean,
-    // ✅ 2. Add callback for confirming payment
     private val onConfirmPayment: (userEmail: String, amount: Double) -> Unit
 ) : RecyclerView.Adapter<UserReportAdapter.UserReportViewHolder>() {
 
@@ -35,20 +33,18 @@ class UserReportAdapter(
         val context = holder.itemView.context
         val currencyFormat = NumberFormat.getCurrencyInstance(Locale("en", "ZM"))
 
+        // --- Bind all data points ---
         holder.binding.userNameTextView.text = report.userName
         holder.binding.userEmailTextView.text = report.userEmail
         holder.binding.outstandingLiabilityTextView.text = currencyFormat.format(report.outstandingLiability)
-
-        // ✅ --- THIS IS THE FIX ---
-        // Bind the new variances data to the correct TextView
         holder.binding.variancesTextView.text = currencyFormat.format(report.variances)
-        // --- END OF FIX ---
-
         holder.binding.todayShortageTextView.text = currencyFormat.format(report.todayShortage)
         holder.binding.monthShortagesTextView.text = currencyFormat.format(report.monthShortages)
         holder.binding.monthPaidTextView.text = currencyFormat.format(report.monthPaid)
+        holder.binding.monthPositiveVariancesTextView.text = currencyFormat.format(report.monthPositiveVariances)
 
-        // ✅ 3. CONTROL VISIBILITY AND SETUP CLICK LISTENER
+        // ✅ --- THIS IS THE FIX ---
+        // Control visibility of individual admin controls directly.
         if (isAdmin) {
             holder.binding.todayPaidEditText.visibility = View.VISIBLE
             holder.binding.confirmPaidButton.visibility = View.VISIBLE
@@ -77,6 +73,7 @@ class UserReportAdapter(
             holder.binding.todayPaidEditText.visibility = View.GONE
             holder.binding.confirmPaidButton.visibility = View.GONE
         }
+        // --- END OF FIX ---
     }
 
     fun updateData(newReports: List<UserReportData>) {

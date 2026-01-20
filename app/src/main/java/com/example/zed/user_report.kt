@@ -23,7 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
-import org.json.JSONException
+import org.json.JSONArray
 import java.io.IOException
 import java.text.ParseException
 import java.text.SimpleDateFormat
@@ -71,7 +71,7 @@ class user_report : Fragment() {
 
 
     private fun setupRecyclerView() {
-        adapter = UserReportAdapter(emptyList(), isAdmin = false) { userEmail, amount ->
+        adapter = UserReportAdapter(emptyList(), false) { userEmail, amount ->
             recordPayment(userEmail, amount)
         }
         binding.userReportRecyclerView.adapter = adapter
@@ -138,27 +138,22 @@ class user_report : Fragment() {
                 val currentUser = allUsers.firstOrNull { it.email.equals(currentUserEmail, ignoreCase = true) }
                 isAdmin = currentUser?.isSubUser == false
 
-                val sheetsService = getSheetsService(googleAccount, readOnly = false) // Use write-enabled service
+                val sheetsService = getSheetsService(googleAccount)
                 val spreadsheetId = findSheetIdByName(getDriveService(googleAccount), "nia-bridge data")
                     ?: throw IOException("Spreadsheet 'nia-bridge data' not found.")
 
-                // ✅ AUTOMATICALLY FIND AND RECORD VARIANCE BEFORE PROCESSING
-                if (isAdmin) {
-                    autoRecordVariance(sheetsService, spreadsheetId)
-                }
-
-                // Now, fetch all data again, including any new variance expense
-                val rangesToFetch = listOf("Closing Balance!A:H", "Expenses!A:I")
+                val rangesToFetch = listOf("Closing Balance!A:H", "Expenses!A:I", "stock_taking!A:H")
                 val batchData = sheetsService.spreadsheets().values().batchGet(spreadsheetId).setRanges(rangesToFetch).execute()
 
                 val closingBalanceValues = batchData.valueRanges.getOrNull(0)?.getValues()?.drop(1) ?: emptyList()
                 val expenseValues = batchData.valueRanges.getOrNull(1)?.getValues()?.drop(1) ?: emptyList()
+                val stockTakingValues = batchData.valueRanges.getOrNull(2)?.getValues()?.drop(1) ?: emptyList()
 
                 val reports = mutableListOf<UserReportData>()
                 val userList = if (isAdmin) allUsers else (currentUser?.let { listOf(it) } ?: emptyList())
 
                 for (user in userList) {
-                    reports.add(processUserData(user.email, closingBalanceValues, expenseValues))
+                    reports.add(processUserData(user.email, closingBalanceValues, expenseValues, stockTakingValues))
                 }
 
                 withContext(Dispatchers.Main) {
@@ -180,129 +175,6 @@ class user_report : Fragment() {
             }
         }
     }
-
-    // ✅ --- FUNCTION TO AUTOMATE VARIANCE RECORDING WITH LOGGING ---
-    // In user_report.kt
-
-    // ✅ --- FUNCTION TO AUTOMATE VARIANCE RECORDING WITH LOGGING ---
-    // In user_report.kt
-
-    // ✅ --- FINAL, CORRECTED FUNCTION TO AUTOMATE VARIANCE RECORDING WITH AGGREGATION ---
-    private suspend fun autoRecordVariance(sheetsService: Sheets, spreadsheetId: String) {
-        val VARIANCE_TAG = "VarianceLogic"
-        try {
-            Log.d(VARIANCE_TAG, "--- Starting automatic variance check ---")
-            // Define the 7-day window for searching
-            val sevenDaysAgo = getStartOfDay(Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -7) }.time)
-            Log.d(VARIANCE_TAG, "Searching for variances and closings since: $sevenDaysAgo")
-
-            // Fetch all necessary data in one go
-            val rangesToFetch = listOf("Closing Balance!E:H", "stock_taking!A:H", "Expenses!A:H")
-            val batchData = sheetsService.spreadsheets().values().batchGet(spreadsheetId).setRanges(rangesToFetch).execute()
-
-            val closingBalanceData = batchData.valueRanges.getOrNull(0)?.getValues()?.drop(1) ?: emptyList()
-            val stockTakingData = batchData.valueRanges.getOrNull(1)?.getValues()?.drop(1) ?: emptyList()
-            val expensesData = batchData.valueRanges.getOrNull(2)?.getValues()?.drop(1) ?: emptyList()
-
-            // --- Step 1: Find the timestamp of the most recent stock-take ---
-            val mostRecentStockTakeTimestamp = stockTakingData
-                .mapNotNull { row -> parseDateString(row.getOrNull(0)?.toString()) } // Get all timestamps
-                .filter { it.after(sevenDaysAgo) } // Filter for the last 7 days
-                .maxOrNull() // Find the most recent one
-
-            if (mostRecentStockTakeTimestamp == null) {
-                Log.d(VARIANCE_TAG, "No recent stock-take timestamp found. Stopping.")
-                return
-            }
-            Log.d(VARIANCE_TAG, "Step 1: Found most recent stock-take timestamp: $mostRecentStockTakeTimestamp")
-
-            // --- Step 2: Aggregate the total cost for that specific timestamp ---
-            val aggregatedVarianceCost = stockTakingData
-                .filter { row ->
-                    val timestamp = parseDateString(row.getOrNull(0)?.toString())
-                    timestamp == mostRecentStockTakeTimestamp // Match the exact timestamp
-                }
-                .sumOf { row -> row.getOrNull(6)?.toString()?.toDoubleOrNull() ?: 0.0 } // Sum up Total Cost (Col G)
-
-            Log.d(VARIANCE_TAG, "Step 2: Aggregated variance cost for this timestamp is: $aggregatedVarianceCost")
-
-            val varianceDate = mostRecentStockTakeTimestamp
-            val varianceCost = aggregatedVarianceCost
-
-            // --- Step 3: Define the 7-day window *based on the stock-take date* ---
-            val variancePeriodEnd = getEndOfDay(varianceDate)
-            val variancePeriodStart = getStartOfDay(Calendar.getInstance().apply {
-                time = varianceDate
-                add(Calendar.DAY_OF_YEAR, -6) // 7 days inclusive window ending on the variance date
-            }.time)
-            Log.d(VARIANCE_TAG, "Step 3: Defined closing balance check window: $variancePeriodStart to $variancePeriodEnd")
-
-            // --- Step 4: Find the Liable User based on the new rule ---
-            val closingCounts = closingBalanceData
-                .filter { row ->
-                    val timestamp = parseDateString(row.getOrNull(1)?.toString()) // Timestamp (Col F of range E:H)
-                    timestamp != null && timestamp >= variancePeriodStart && timestamp <= variancePeriodEnd
-                }
-                .mapNotNull { it.getOrNull(3)?.toString() } // Get the user email (Col H of range E:H)
-                .groupingBy { it }
-                .eachCount()
-
-            Log.d(VARIANCE_TAG, "Closing counts in period: $closingCounts")
-
-            val liableUser = closingCounts.maxByOrNull { it.value }?.key
-            Log.d(VARIANCE_TAG, "Step 4: Determined liable user is: $liableUser")
-
-            // --- Step 5: Record the variance if a liable user and cost exist ---
-            if (liableUser != null && varianceCost != 0.0) {
-                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                val uniqueVarianceId = "VAR-${sdf.format(varianceDate)}-$liableUser"
-                Log.d(VARIANCE_TAG, "Step 5: Generated Unique ID for variance: $uniqueVarianceId")
-
-                val isAlreadyRecorded = expensesData.any { it.getOrNull(0)?.toString() == uniqueVarianceId }
-
-                if (!isAlreadyRecorded) {
-                    Log.d(VARIANCE_TAG, "SUCCESS: Variance is new. Writing to Expenses sheet...")
-                    val varianceExpenseRow = listOf(
-                        uniqueVarianceId,
-                        "Variances",
-                        "Stock-take variance for $liableUser on ${sdf.format(varianceDate)}",
-                        1,
-                        varianceCost,
-                        "TRUE",
-                        googleAccount.email,
-                        SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()),
-                        ""
-                    )
-                    val valueRange = ValueRange().setValues(listOf(varianceExpenseRow))
-                    sheetsService.spreadsheets().values()
-                        .append(spreadsheetId, "Expenses!A:I", valueRange)
-                        .setValueInputOption("USER_ENTERED")
-                        .execute()
-                    Log.d(VARIANCE_TAG, "--- Variance recorded successfully ---")
-                } else {
-                    Log.d(VARIANCE_TAG, "INFO: Variance with ID '$uniqueVarianceId' already recorded. No action taken.")
-                }
-            } else {
-                Log.d(VARIANCE_TAG, "Step 5 SKIPPED: No liable user found or variance cost is zero.")
-            }
-        } catch (e: Exception) {
-            withContext(Dispatchers.Main) {
-                Log.e(VARIANCE_TAG, "Could not auto-record variance due to an error", e)
-            }
-        } finally {
-            Log.d(VARIANCE_TAG, "--- Finished automatic variance check ---")
-        }
-    }
-
-    // Helper function to get the end of a given day
-    private fun getEndOfDay(date: Date): Date = Calendar.getInstance().apply {
-        time = date
-        set(Calendar.HOUR_OF_DAY, 23)
-        set(Calendar.MINUTE, 59)
-        set(Calendar.SECOND, 59)
-        set(Calendar.MILLISECOND, 999)
-    }.time
-
 
     private suspend fun getSheetsService(account: GoogleSignInAccount, readOnly: Boolean = true): Sheets = withContext(Dispatchers.IO) {
         val scopes = if (readOnly) listOf(SheetsScopes.SPREADSHEETS_READONLY) else listOf(SheetsScopes.SPREADSHEETS)
@@ -336,7 +208,7 @@ class user_report : Fragment() {
             val responseBody = response.body?.string() ?: throw IOException("Empty response from server.")
 
             val userMap = mutableMapOf<String, UserRole>()
-            val jsonArray = org.json.JSONArray(responseBody)
+            val jsonArray = JSONArray(responseBody)
             val roleKeys = listOf("stock", "transaction", "grn", "purchase requisition", "inventory count", "cash tracker")
 
             for (i in 0 until jsonArray.length()) {
@@ -363,85 +235,121 @@ class user_report : Fragment() {
         }
     }
 
-    // ✅ --- FINAL, CORRECTED DATA PROCESSING LOGIC ---
+    // ✅✅✅ --- FINAL, CORRECTED LOGIC --- ✅✅✅
     private fun processUserData(
         userEmail: String,
         closingBalanceData: List<List<Any>>,
-        expensesData: List<List<Any>>
+        expensesData: List<List<Any>>,
+        stockTakingData: List<List<Any>>
     ): UserReportData {
 
         val calendar = Calendar.getInstance()
         val todayStart = getStartOfDay(calendar.time)
         val monthStart = getStartOfDay(calendar.apply { set(Calendar.DAY_OF_MONTH, 1) }.time)
 
-        // --- 1. Calculate Shortages (All-Time and This Month) ---
-        var todayShortage = 0.0
-        var monthShortages = 0.0
-        var totalShortages = 0.0
+        // --- 1. NET Cash Liability (All-Time and This Month) ---
+        var netTodayCashLiability = 0.0
+        var netMonthCashLiability = 0.0
+        var netTotalCashLiability = 0.0
 
         for (row in closingBalanceData) {
-            if (userEmail.equals(row.getOrNull(7)?.toString(), true)) {
+            if (userEmail.equals(row.getOrNull(7)?.toString(), ignoreCase = true)) {
                 val timestamp = parseDateString(row.getOrNull(5)?.toString()) ?: continue
                 val shortage = row.getOrNull(4)?.toString()?.toDoubleOrNull() ?: 0.0
-                totalShortages += shortage
-                if (timestamp.after(monthStart)) monthShortages += shortage
-                if (timestamp.after(todayStart)) todayShortage += shortage
+
+                netTotalCashLiability += shortage
+                if (timestamp.after(monthStart)) netMonthCashLiability += shortage
+                if (timestamp.after(todayStart)) netTodayCashLiability += shortage
             }
         }
 
-        // --- 2. Calculate Payments and Variances from Expenses sheet (All-Time and This Month) ---
-        var todayPaid = 0.0
+        // --- 2. Payments (All-Time and This Month) ---
         var monthPaid = 0.0
         var totalPaid = 0.0
-        var monthVariances = 0.0
-        var totalVariances = 0.0
-        val adminEmail = googleAccount.email
 
         for (row in expensesData) {
             val description = row.getOrNull(2)?.toString() ?: ""
-            val permit = row.getOrNull(5)?.toString()
-            val rowAdmin = row.getOrNull(6)?.toString()
-            val itemType = row.getOrNull(1)?.toString() ?: ""
-            val timestamp = parseDateString(row.getOrNull(7)?.toString()) ?: continue
-            val amount = row.getOrNull(4)?.toString()?.toDoubleOrNull() ?: 0.0
-
-            // Check for a liability payment
-            if (itemType.equals("Liability Settlement", ignoreCase = true) &&
-                description.equals("Payment to $userEmail", ignoreCase = true) &&
-                permit.equals("TRUE", ignoreCase = true) &&
-                rowAdmin.equals(adminEmail, ignoreCase = true)
-            ) {
+            if (description.equals("Payment to $userEmail", ignoreCase = true)) {
+                val timestamp = parseDateString(row.getOrNull(7)?.toString()) ?: continue
+                val amount = row.getOrNull(4)?.toString()?.toDoubleOrNull() ?: 0.0
                 totalPaid += amount
                 if (timestamp.after(monthStart)) monthPaid += amount
-                if (timestamp.after(todayStart)) todayPaid += amount
-            }
-            // Check for an attributed variance
-            else if (itemType.equals("Variances", ignoreCase = true) &&
-                description.contains(userEmail, ignoreCase = true) &&
-                permit.equals("TRUE", ignoreCase = true)
-            ) {
-                totalVariances += amount
-                if (timestamp.after(monthStart)) monthVariances += amount
             }
         }
 
-        // --- 3. Calculate Final Display Values based on your new logic ---
-        val outstandingLiability = (totalShortages + totalVariances) - totalPaid
-        val netMonthLiability = (monthShortages + monthVariances) - monthPaid
+        // --- 3. NET Stock Variance Liability (All-Time and This Month) ---
+        var netTotalStockVarianceLiability = 0.0
+        var netMonthStockVarianceLiability = 0.0
+        var monthPositiveVariances = 0.0 // For display purposes
+
+        val groupedStockTakes = stockTakingData.groupBy { parseDateString(it.getOrNull(0)?.toString()) }
+
+        for ((timestamp, rows) in groupedStockTakes) {
+            if (timestamp == null) continue
+
+            val periodEnd = getEndOfDay(timestamp)
+            val periodStart = getStartOfDay(Calendar.getInstance().apply {
+                time = timestamp
+                add(Calendar.DAY_OF_YEAR, -6)
+            }.time)
+
+            val liableUserForPeriod = closingBalanceData
+                .filter {
+                    val cbTimestamp = parseDateString(it.getOrNull(5)?.toString())
+                    cbTimestamp != null && cbTimestamp >= periodStart && cbTimestamp <= periodEnd
+                }
+                .mapNotNull { it.getOrNull(7)?.toString() }
+                .groupingBy { it.lowercase() }
+                .eachCount()
+                .maxByOrNull { it.value }?.key
+
+            if (userEmail.equals(liableUserForPeriod, ignoreCase = true)) {
+
+                val netVarianceForTimestamp = rows.sumOf {
+                    val cost = it.getOrNull(6)?.toString()?.toDoubleOrNull() ?: 0.0
+                    -cost // A deficit (-ve in sheet) becomes a debt (+ve), a surplus (+ve in sheet) becomes a credit (-ve).
+                }
+
+                netTotalStockVarianceLiability += netVarianceForTimestamp
+
+                if (timestamp.after(monthStart)) {
+                    netMonthStockVarianceLiability += netVarianceForTimestamp
+
+                    // Separately, calculate the sum of only positive variances (surpluses) for display
+                    val positiveSurplusThisMonth = rows.sumOf {
+                        val cost = it.getOrNull(6)?.toString()?.toDoubleOrNull() ?: 0.0
+                        if (cost > 0) cost else 0.0
+                    }
+                    monthPositiveVariances += positiveSurplusThisMonth
+                }
+            }
+        }
+
+        // --- 4. Final Calculation ---
+        val outstandingLiability = (netTotalCashLiability + netTotalStockVarianceLiability) - totalPaid
+        val netMonthLiability = (netMonthCashLiability + netMonthStockVarianceLiability) - monthPaid
 
         return UserReportData(
             userName = userEmail.split("@").firstOrNull()?.replaceFirstChar { it.titlecase() } ?: "Unknown User",
             userEmail = userEmail,
             outstandingLiability = outstandingLiability,
-            variances = totalVariances, // Display the grand total of all variances
-            todayShortage = todayShortage,
-            todayPaid = todayPaid,
-            monthShortages = netMonthLiability, // The "monthly shortage" field now shows the net monthly debt
-            monthPaid = monthPaid // This correctly shows total paid for the month
+            variances = netTotalStockVarianceLiability,
+            todayShortage = netTodayCashLiability,
+            monthShortages = netMonthLiability,
+            monthPaid = monthPaid,
+            monthPositiveVariances = monthPositiveVariances
         )
     }
 
     private fun getStartOfDay(date: Date): Date = Calendar.getInstance().apply { time = date; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }.time
+
+    private fun getEndOfDay(date: Date): Date = Calendar.getInstance().apply {
+        time = date
+        set(Calendar.HOUR_OF_DAY, 23)
+        set(Calendar.MINUTE, 59)
+        set(Calendar.SECOND, 59)
+        set(Calendar.MILLISECOND, 999)
+    }.time
 
     private suspend fun getDriveService(account: GoogleSignInAccount): Drive = withContext(Dispatchers.IO) {
         val credential = GoogleAccountCredential.usingOAuth2(requireContext(), listOf(DriveScopes.DRIVE_READONLY)).setBackOff(com.google.api.client.util.ExponentialBackOff()).apply { selectedAccount = account.account }

@@ -59,6 +59,7 @@ class detailed_goods_received_note : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        binding.backBtnPhysicalInventory.setOnClickListener { finish() }
         binding = ActivityDetailedGoodsReceivedNoteBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -102,6 +103,110 @@ class detailed_goods_received_note : AppCompatActivity() {
         binding.datailedGoodsReceivenNoteRecyclerView.layoutManager = LinearLayoutManager(this)
         binding.datailedGoodsReceivenNoteRecyclerView.adapter = adapter
     }
+
+    // ✅✅✅ --- THIS FUNCTION IS NOW THE CORE LOGIC --- ✅✅✅
+    private fun handlePurchase(purchasedItems: List<DetailedGoodsReceivedProduct>) {
+        val dialog = ProgressDialog(this).apply {
+            setMessage("Processing Purchase & Expense...")
+            setCancelable(false)
+            show()
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val sheetsService = getSheetsService(googleAccount)
+                val spreadsheetId = findSheetIdByName(getDriveService(googleAccount), "nia-bridge data")
+                    ?: throw IOException("Spreadsheet 'nia-bridge data' not found.")
+                val currentUserEmail = googleAccount.email ?: "Unknown"
+                val requisitionCode = binding.textView51.text.toString()
+
+                // --- Step 1: Add items to "purchased goods sheet" ---
+                val purchaseSheetName = "purchased goods sheet"
+                // This block to create the sheet if it doesn't exist is kept from your original code
+                var sheetExists = false
+                val spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute()
+                for (sheet in spreadsheet.sheets) {
+                    if (sheet.properties.title == purchaseSheetName) {
+                        sheetExists = true
+                        break
+                    }
+                }
+                if (!sheetExists) {
+                    val addSheetRequest = AddSheetRequest().setProperties(SheetProperties().setTitle(purchaseSheetName))
+                    val batchUpdate = BatchUpdateSpreadsheetRequest().setRequests(listOf(Request().setAddSheet(addSheetRequest)))
+                    sheetsService.spreadsheets().batchUpdate(spreadsheetId, batchUpdate).execute()
+                    val headerValues = listOf(listOf(
+                        "Barcode", "Product Name", "Quantity", "Unit Cost", "Total Cost",
+                        "Purchased By", "Received By", "Timestamp", "Expiry Date", "Expiry Timestamp",
+                        "Requisition Code"
+                    ))
+                    val headerBody = ValueRange().setValues(headerValues)
+                    sheetsService.spreadsheets().values()
+                        .update(spreadsheetId, "$purchaseSheetName!A1", headerBody)
+                        .setValueInputOption("USER_ENTERED")
+                        .execute()
+                }
+
+                // Append the purchased items
+                val timestampFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                val valuesToAppend = purchasedItems.map { item ->
+                    val totalCost = (item.unitCost.toBigDecimalOrNull() ?: BigDecimal.ZERO) * item.quantity.toBigDecimal()
+                    listOf(
+                        item.barcode, item.name, item.quantity, item.unitCost, totalCost.toPlainString(),
+                        currentUserEmail, "", timestampFormat.format(Date()), item.expiryDate ?: "", "", requisitionCode
+                    )
+                }
+                val appendBody = ValueRange().setValues(valuesToAppend)
+                sheetsService.spreadsheets().values()
+                    .append(spreadsheetId, purchaseSheetName, appendBody)
+                    .setValueInputOption("USER_ENTERED")
+                    .setInsertDataOption("INSERT_ROWS")
+                    .execute()
+
+                // --- Step 2: Add a SINGLE consolidated expense to "Expenses" sheet ---
+                val totalPurchaseCost = purchasedItems.fold(BigDecimal.ZERO) { acc, item ->
+                    val itemTotal = (item.unitCost.toBigDecimalOrNull() ?: BigDecimal.ZERO) * item.quantity.toBigDecimal()
+                    acc + itemTotal
+                }.toDouble()
+
+                if (totalPurchaseCost > 0) {
+                    val expenseTimestamp = timestampFormat.format(Date())
+                    val expenseRow = listOf(
+                        UUID.randomUUID().toString(),
+                        "Stock Purchase",
+                        "Consolidated Purchase for $requisitionCode",
+                        purchasedItems.sumOf { it.quantity },
+                        totalPurchaseCost,
+                        "TRUE", // isCredit
+                        currentUserEmail,
+                        expenseTimestamp,
+                        expenseTimestamp
+                    )
+                    val expenseValueRange = ValueRange().setValues(listOf(expenseRow))
+                    sheetsService.spreadsheets().values()
+                        .append(spreadsheetId, "Expenses!A:I", expenseValueRange)
+                        .setValueInputOption("USER_ENTERED")
+                        .execute()
+                }
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@detailed_goods_received_note, "Purchase and Expense recorded!", Toast.LENGTH_LONG).show()
+                    fetchDetailedData(requisitionCode) // Refresh the data
+                }
+
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Log.e(TAG, "Failed to process consolidated purchase", e)
+                    Toast.makeText(this@detailed_goods_received_note, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            } finally {
+                withContext(Dispatchers.Main) {
+                    if (dialog.isShowing) dialog.dismiss()
+                }
+            }
+        }
+    }
+
 
     private fun updateGoodsReceivedStatus(item: DetailedGoodsReceivedProduct, position: Int) {
         val dialog = ProgressDialog(this).apply {
@@ -232,11 +337,12 @@ class detailed_goods_received_note : AppCompatActivity() {
                             requisitionHasPurchasedItems = true
                             val barcode = if (row.size > 0) row[0]?.toString() else null
                             val unitCost = if (row.size > 3) row[3]?.toString() else null
-                            val expiryDate = if (row.size > 8) row[8]?.toString() else null
+                            // This logic checks if 'Received By' (column G) is filled
+                            val receivedByUser = if (row.size > 6) row[6]?.toString() else null
 
                             if (barcode != null && unitCost != null) {
                                 purchasedItemsMap[barcode] = unitCost
-                                if (!expiryDate.isNullOrBlank()) {
+                                if (!receivedByUser.isNullOrBlank()) {
                                     receivedBarcodes.add(barcode)
                                 }
                             }
@@ -335,7 +441,13 @@ class detailed_goods_received_note : AppCompatActivity() {
             if (checkedItems.isNotEmpty()) {
                 generatePdf(checkedItems, binding.textView51.text.toString())
             } else {
-                Toast.makeText(this, "No items selected to generate PDF.", Toast.LENGTH_SHORT).show()
+                // If nothing is checked, generate for all purchased items
+                val purchasedItems = detailedItems.filter { it.isPurchased }
+                if (purchasedItems.isNotEmpty()) {
+                    generatePdf(purchasedItems, binding.textView51.text.toString())
+                } else {
+                    Toast.makeText(this, "No items available to generate PDF.", Toast.LENGTH_SHORT).show()
+                }
             }
         }
 
@@ -354,7 +466,6 @@ class detailed_goods_received_note : AppCompatActivity() {
             handlePurchase(checkedItems)
         }
 
-        // ✅ --- BARCODE SCANNER LOGIC ADDED HERE ---
         binding.barcodeScanner.setOnClickListener {
             val scannerDialog = BarcodeScannerDialogFragment { scannedBarcode ->
                 findAndHighlightItem(scannedBarcode)
@@ -363,88 +474,6 @@ class detailed_goods_received_note : AppCompatActivity() {
         }
     }
 
-    private fun handlePurchase(purchasedItems: List<DetailedGoodsReceivedProduct>) {
-        val dialog = ProgressDialog(this).apply {
-            setMessage("Processing purchase...")
-            setCancelable(false)
-            show()
-        }
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val sheetsService = getSheetsService(googleAccount)
-                val spreadsheetId = findSheetIdByName(getDriveService(googleAccount), "nia-bridge data")
-                    ?: throw IOException("Spreadsheet 'nia-bridge data' not found.")
-
-                val purchaseSheetName = "purchased goods sheet"
-
-                var sheetExists = false
-                val spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute()
-                for (sheet in spreadsheet.sheets) {
-                    if (sheet.properties.title == purchaseSheetName) {
-                        sheetExists = true
-                        break
-                    }
-                }
-
-                if (!sheetExists) {
-                    val addSheetRequest = AddSheetRequest().setProperties(SheetProperties().setTitle(purchaseSheetName))
-                    val batchUpdate = BatchUpdateSpreadsheetRequest().setRequests(listOf(Request().setAddSheet(addSheetRequest)))
-                    sheetsService.spreadsheets().batchUpdate(spreadsheetId, batchUpdate).execute()
-
-                    val headerValues = listOf(listOf(
-                        "Barcode", "Product Name", "Quantity", "Unit Cost", "Total Cost",
-                        "Purchased By", "Received By", "Timestamp", "Expiry Date", "Expiry Timestamp",
-                        "Requisition Code"
-                    ))
-                    val headerBody = ValueRange().setValues(headerValues)
-                    sheetsService.spreadsheets().values()
-                        .update(spreadsheetId, "$purchaseSheetName!A1", headerBody)
-                        .setValueInputOption("USER_ENTERED")
-                        .execute()
-                }
-
-                val valuesToAppend = mutableListOf<List<Any>>()
-                val timestampFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                val currentUserEmail = googleAccount.email ?: "Unknown"
-                val requisitionCode = binding.textView51.text.toString()
-
-                for (item in purchasedItems) {
-                    val unitCost = item.unitCost.toBigDecimalOrNull() ?: BigDecimal.ZERO
-                    val totalCost = unitCost * item.quantity.toBigDecimal()
-                    val timestamp = timestampFormat.format(Date())
-
-                    val row = listOf(
-                        item.barcode, item.name, item.quantity, item.unitCost, totalCost.toPlainString(),
-                        currentUserEmail, "", timestamp, item.expiryDate ?: "", "", requisitionCode
-                    )
-                    valuesToAppend.add(row)
-                }
-
-                val appendBody = ValueRange().setValues(valuesToAppend)
-                sheetsService.spreadsheets().values()
-                    .append(spreadsheetId, purchaseSheetName, appendBody)
-                    .setValueInputOption("USER_ENTERED")
-                    .setInsertDataOption("INSERT_ROWS")
-                    .execute()
-
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@detailed_goods_received_note, "Purchase recorded successfully!", Toast.LENGTH_LONG).show()
-                    fetchDetailedData(requisitionCode)
-                }
-
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Log.e(TAG, "Failed to process purchase", e)
-                    Toast.makeText(this@detailed_goods_received_note, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            } finally {
-                withContext(Dispatchers.Main) {
-                    if(dialog.isShowing) dialog.dismiss()
-                }
-            }
-        }
-    }
 
     private fun setupSearchView() {
         val from = arrayOf("productName")
@@ -499,7 +528,6 @@ class detailed_goods_received_note : AppCompatActivity() {
             if (itemIndex != -1) {
                 val layoutManager = binding.datailedGoodsReceivenNoteRecyclerView.layoutManager as LinearLayoutManager
                 layoutManager.scrollToPositionWithOffset(itemIndex, 0)
-                // You could add a temporary highlight effect here if needed
                 adapter.notifyItemChanged(itemIndex, "HIGHLIGHT")
             } else {
                 Toast.makeText(this@detailed_goods_received_note, "Product with barcode '$barcode' not found in this list.", Toast.LENGTH_SHORT).show()

@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
+    android:layout_height="wrap_content"
     tools:context=".detailsStock">
 
     <androidx.constraintlayout.widget.ConstraintLayout
@@ -230,7 +230,6 @@
             android:id="@+id/btnSubmit"
             android:layout_width="411dp"
             android:layout_height="30dp"
-            android:layout_marginTop="32dp"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@+id/mainScroll">
@@ -284,13 +283,15 @@
         <androidx.core.widget.NestedScrollView
             android:id="@+id/mainScroll"
             android:layout_width="0dp"
-            android:layout_height="400dp"
-            android:layout_marginTop="24dp"
+            android:layout_height="234dp"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginEnd="16dp"
             android:fillViewport="true"
             android:paddingBottom="50dp"
-            app:layout_constraintEnd_toEndOf="@+id/add_category"
-            app:layout_constraintStart_toStartOf="@+id/stockImage"
-            app:layout_constraintTop_toBottomOf="@+id/stockImage">
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/spinnerContainerReference">
 
             <LinearLayout
                 android:layout_width="match_parent"

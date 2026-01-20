@@ -45,7 +45,7 @@ class notFoundFragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         _binding = ActivityStockFragmentBinding.inflate(inflater, container, false)
-        binding.varianceAdd.visibility = View.GONE
+        //binding.varianceAdd.visibility = View.GONE
         binding.StockListRecyclerView.layoutManager = LinearLayoutManager(requireContext())
         setupClickListeners()
         fetchInventoryData()
@@ -53,6 +53,7 @@ class notFoundFragment : Fragment() {
     }
 
     private fun setupClickListeners() {
+        /*
         binding.varianceAdd.setOnClickListener {
             val currentUser = Firebase.auth.currentUser
             if (currentUser?.email == null) {
@@ -76,6 +77,7 @@ class notFoundFragment : Fragment() {
                 }
             }
         }
+         */
     }
 
     private fun checkUserRole(email: String, callback: (exists: Boolean, parentEmail: String?) -> Unit) {

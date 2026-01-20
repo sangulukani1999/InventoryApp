@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.example.zed.databinding.FragmentBalancingBinding
@@ -49,12 +50,12 @@ data class ProfitTransactionItem(
     val costPrice: Double
 )
 
-// Reverted: Removed variances as per your instruction
 data class BalancingData(
     val sales: List<SheetRow>,
     val closingBalances: List<SheetRow>,
     val investments: List<SheetRow>,
-    val expenses: List<SheetRow>,
+    val expenses: List<SheetRow>, // Will hold ONLY non-purchase expenses
+    val purchases: List<SheetRow>, // Will hold ONLY "Stock Purchase" expenses
     val inventoryCost: Double,
     val profitTransactions: List<ProfitTransaction>
 )
@@ -145,10 +146,10 @@ class balancing : Fragment() {
                 val spreadsheetId = findSheetIdByName(getDriveService(googleAccount), "nia-bridge data")
                     ?: throw IOException("Spreadsheet 'nia-bridge data' not found.")
 
-                // Reverted: Removed stock_taking from ranges
+                // Fetching Expenses sheet now includes column B for the category
                 val ranges = listOf(
                     "Closing Balance!A:H",
-                    "Expenses!E:H",
+                    "Expenses!B:H", // Range changed to B:H to include category
                     "Products!D:I",
                     "Transactions!G:H"
                 )
@@ -165,7 +166,12 @@ class balancing : Fragment() {
                 val sales = parseSheet(closingBalanceData, timestampCol = 5, valueCol = 1)
                 val closingBalances = parseSheet(closingBalanceData, timestampCol = 5, valueCol = 3)
                 val investments = parseSheet(closingBalanceData, timestampCol = 5, valueCol = 6)
-                val expenses = parseSheet(expensesData, timestampCol = 3, valueCol = 0)
+
+                // --- Separate Expenses and Purchases ---
+                val allExpenses = parseSheetWithCategory(expensesData, timestampCol = 6, valueCol = 3, categoryCol = 0)
+                val purchases = allExpenses.filter { it.category == "Stock Purchase" }.map { SheetRow(it.timestamp, it.value) }
+                val otherExpenses = allExpenses.filter { it.category != "Stock Purchase" }.map { SheetRow(it.timestamp, it.value) }
+
 
                 val inventoryCost = calculateInventoryCost(productData)
                 val costPriceMap = productData?.drop(1)?.associate { row ->
@@ -173,12 +179,12 @@ class balancing : Fragment() {
                 } ?: emptyMap()
                 val profitTransactions = parseTransactionsForProfit(transactionCartData, costPriceMap)
 
-                // Reverted: Removed variances from BalancingData constructor
                 fullBalancingData = BalancingData(
                     sales,
                     closingBalances,
                     investments,
-                    expenses,
+                    otherExpenses, // Pass the filtered list of other expenses
+                    purchases,     // Pass the filtered list of purchases
                     inventoryCost,
                     profitTransactions
                 )
@@ -220,6 +226,30 @@ class balancing : Fragment() {
             }
         } ?: emptyList()
     }
+
+    // Helper data class for parsing with category
+    private data class CategorizedRow(val category: String, val timestamp: Date, val value: Double)
+
+    // New function to parse expenses along with their category
+    private fun parseSheetWithCategory(data: List<List<Any>>?, timestampCol: Int, valueCol: Int, categoryCol: Int): List<CategorizedRow> {
+        return data?.drop(1)?.mapNotNull { row ->
+            val category = row.getOrNull(categoryCol)?.toString()
+            val timestampStr = row.getOrNull(timestampCol)?.toString()
+            val valueStr = row.getOrNull(valueCol)?.toString()
+            val timestamp = parseDateString(timestampStr)
+
+            if (timestamp != null && !valueStr.isNullOrBlank() && !category.isNullOrBlank()) {
+                CategorizedRow(
+                    category = category,
+                    timestamp = timestamp,
+                    value = valueStr.replace(",", "").toDoubleOrNull() ?: 0.0
+                )
+            } else {
+                null
+            }
+        } ?: emptyList()
+    }
+
 
     private fun parseTransactionsForProfit(data: List<List<Any>>?, costMap: Map<String?, Double>): List<ProfitTransaction> {
         val transactionList = mutableListOf<ProfitTransaction>()
@@ -290,82 +320,148 @@ class balancing : Fragment() {
             DateFilter.CUSTOM -> getStartAndEndOfDay(customDate ?: Date())
         }
 
-        // Correctly calculate the opening balance from the day BEFORE the start date.
-        val openingBalanceCal = Calendar.getInstance().apply { time = startDate; add(Calendar.DAY_OF_YEAR, -1) }
-        val (openingStart, openingEnd) = getStartAndEndOfDay(openingBalanceCal.time)
-        val openingBalance = fullBalancingData!!.closingBalances.lastOrNull { it.timestamp != null && it.timestamp >= openingStart && it.timestamp <= openingEnd }?.value ?: 0.0
+        val openingBalanceDate = Calendar.getInstance().apply {
+            time = startDate
+            add(Calendar.DAY_OF_YEAR, -1)
+        }.time
 
-        // --- Filter all data for the selected period (startDate to endDate) ---
-        val filteredSales = fullBalancingData!!.sales.filter { it.timestamp != null && it.timestamp >= startDate && it.timestamp <= endDate }.sumOf { it.value }
-        val filteredInvestment = fullBalancingData!!.investments.filter { it.timestamp != null && it.timestamp >= startDate && it.timestamp <= endDate }.sumOf { it.value }
-        val filteredExpenses = fullBalancingData!!.expenses.filter { it.timestamp != null && it.timestamp >= startDate && it.timestamp <= endDate }.sumOf { it.value }
+        val openingBalance = fullBalancingData!!.closingBalances
+            .lastOrNull { it.timestamp != null && !it.timestamp.after(getEndOfDay(openingBalanceDate)) }?.value ?: 0.0
 
-        // ✅ FINAL FIX: Get the MOST RECENT available cash figure within the selected period.
-        val filteredAvailableCash = fullBalancingData!!.closingBalances.lastOrNull { it.timestamp != null && it.timestamp >= startDate && it.timestamp <= endDate }?.value ?: 0.0
+        val totalSales = fullBalancingData!!.sales.filter { it.timestamp != null && it.timestamp in startDate..endDate }.sumOf { it.value }
+        val totalInvestments = fullBalancingData!!.investments.filter { it.timestamp != null && it.timestamp in startDate..endDate }.sumOf { it.value }
+        val totalOtherExpenses = fullBalancingData!!.expenses.filter { it.timestamp != null && it.timestamp in startDate..endDate }.sumOf { it.value }
+        val totalPurchases = fullBalancingData!!.purchases.filter { it.timestamp != null && it.timestamp in startDate..endDate }.sumOf { it.value }
 
-        val filteredProfitTransactions = fullBalancingData!!.profitTransactions.filter { it.timestamp != null && it.timestamp >= startDate && it.timestamp <= endDate }
-        val profit = filteredProfitTransactions.sumOf { tx -> tx.items.sumOf { item -> (item.price - item.costPrice) * item.quantity } }
+        val expectedCash = totalSales + openingBalance + totalInvestments - totalOtherExpenses - totalPurchases
+        val availableCash = fullBalancingData!!.closingBalances.lastOrNull { it.timestamp != null && it.timestamp in startDate..endDate }?.value ?: 0.0
+        val shortages = availableCash - expectedCash
 
-        // Formula remains the same, but inputs are now correct
-        val expectedCash = (filteredSales + openingBalance + filteredInvestment) - filteredExpenses
-        val shortage = expectedCash - filteredAvailableCash
-        val capital = filteredAvailableCash + fullBalancingData!!.inventoryCost
-
-        // Reverted: Removed variances from updateUI call
-        updateUI(filteredSales, openingBalance, filteredInvestment, filteredExpenses, expectedCash, filteredAvailableCash, shortage, capital, profit)
-    }
-
-    // Reverted: Removed variances from signature
-    private fun updateUI(sales: Double, openingBalance: Double, investment: Double, expenses: Double, expectedCash: Double, availableCash: Double, shortage: Double, capital: Double, profit: Double) {
-        val format = NumberFormat.getCurrencyInstance(Locale("en", "ZM"))
-
-        binding.salesFigure.text = format.format(sales)
-        binding.openingBalanceFigure.text = format.format(openingBalance)
-        binding.anyInvestmentFigure.text = format.format(investment)
-        binding.lessExpensesFigure.text = "(${format.format(expenses)})"
-        // Reverted: Removed binding for variances
-        binding.expectedCashFigure.text = format.format(expectedCash)
-        binding.availableCashFigure.text = format.format(availableCash)
-        binding.shortagesFigure.text = format.format(shortage)
-        binding.capitalFigure.text = format.format(capital)
-        binding.profitFigure.text = format.format(profit)
-
-        val shortageColor = when {
-            shortage < -0.01 -> resources.getColor(R.color.variance_positive, null)
-            shortage > 0.01 -> resources.getColor(R.color.variance_negative, null)
-            else -> resources.getColor(android.R.color.black, null)
+        val transactionsInPeriod = fullBalancingData!!.profitTransactions.filter { it.timestamp != null && it.timestamp in startDate..endDate }
+        var totalCostOfGoodsSold = 0.0
+        transactionsInPeriod.forEach { transaction ->
+            transaction.items.forEach { item ->
+                totalCostOfGoodsSold += item.costPrice * item.quantity
+            }
         }
-        binding.shortagesFigure.setTextColor(shortageColor)
+        val grossProfit = totalSales - totalCostOfGoodsSold
+
+        updateUI(
+            sales = totalSales,
+            openingBalance = openingBalance,
+            investments = totalInvestments,
+            otherExpenses = totalOtherExpenses,
+            purchases = totalPurchases,
+            expectedCash = expectedCash,
+            availableCash = availableCash,
+            shortages = shortages,
+            inventoryCost = fullBalancingData!!.inventoryCost,
+            grossProfit = grossProfit
+        )
     }
 
     private fun showDatePickerDialog() {
         val calendar = Calendar.getInstance()
-        DatePickerDialog(requireContext(), { _, year, month, dayOfMonth ->
-            val selectedDate = Calendar.getInstance().apply { set(year, month, dayOfMonth) }.time
-            applyFilter(DateFilter.CUSTOM, selectedDate)
-        }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show()
+        val datePickerDialog = DatePickerDialog(
+            requireContext(),
+            { _, year, month, dayOfMonth ->
+                val selectedDate = Calendar.getInstance().apply { set(year, month, dayOfMonth) }.time
+                applyFilter(DateFilter.CUSTOM, selectedDate)
+            },
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        )
+        datePickerDialog.show()
     }
 
-    private fun getStartOfDay(date: Date): Date = Calendar.getInstance().apply { time = date; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }.time
-    private fun getEndOfDay(date: Date): Date = Calendar.getInstance().apply { time = date; set(Calendar.HOUR_OF_DAY, 23); set(Calendar.MINUTE, 59); set(Calendar.SECOND, 59); set(Calendar.MILLISECOND, 999) }.time
-    private fun getStartAndEndOfDay(date: Date): Pair<Date, Date> = Pair(getStartOfDay(date), getEndOfDay(date))
+    private fun updateUI(
+        sales: Double,
+        openingBalance: Double,
+        investments: Double,
+        otherExpenses: Double,
+        purchases: Double,
+        expectedCash: Double,
+        availableCash: Double,
+        shortages: Double,
+        inventoryCost: Double,
+        grossProfit: Double
+    ) {
+        val currencyFormat = NumberFormat.getCurrencyInstance(Locale("en", "ZM"))
 
-    private fun getSheetsService(account: GoogleSignInAccount): Sheets {
-        val credential = GoogleAccountCredential.usingOAuth2(requireContext(), listOf(SheetsScopes.SPREADSHEETS_READONLY)).setBackOff(com.google.api.client.util.ExponentialBackOff()).apply { selectedAccount = account.account }
-        return Sheets.Builder(GoogleNetHttpTransport.newTrustedTransport(), GsonFactory.getDefaultInstance(), credential).setApplicationName(getString(R.string.app_name)).build()
+        binding.salesFigure.text = currencyFormat.format(sales)
+        binding.openingBalanceFigure.text = currencyFormat.format(openingBalance)
+        binding.anyInvestmentFigure2.text = currencyFormat.format(investments)
+
+        // --- Display separated expenses and purchases ---
+        binding.lessExpensesFigure.text = currencyFormat.format(otherExpenses)
+        binding.purchases.text = currencyFormat.format(purchases) // Update the purchases TextView
+
+        binding.expectedCashFigure.text = currencyFormat.format(expectedCash)
+        binding.availableCashFigure.text = currencyFormat.format(availableCash)
+        binding.shortagesFigure.text = currencyFormat.format(shortages)
+        binding.capitalFigure.text = currencyFormat.format(inventoryCost)
+        binding.profitFigure.text = currencyFormat.format(grossProfit)
+
+        // ✅ --- THIS IS THE CORRECTED LOGIC ---
+        // If shortages are negative (a deficit), color is red.
+        // If shortages are positive or zero (a surplus), color is green.
+        binding.shortagesFigure.setTextColor(
+            ContextCompat.getColor(
+                requireContext(),
+                if (shortages < 0) R.color.variance_negative else R.color.variance_positive
+            )
+        )
     }
 
-    private fun getDriveService(account: GoogleSignInAccount): Drive {
-        val credential = GoogleAccountCredential.usingOAuth2(requireContext(), listOf(DriveScopes.DRIVE_READONLY)).setBackOff(com.google.api.client.util.ExponentialBackOff()).apply { selectedAccount = account.account }
-        return Drive.Builder(GoogleNetHttpTransport.newTrustedTransport(), GsonFactory.getDefaultInstance(), credential).setApplicationName(getString(R.string.app_name)).build()
-    }
+    private fun getStartOfDay(date: Date): Date = Calendar.getInstance().apply {
+        time = date
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.time
 
-    private suspend fun findSheetIdByName(driveService: Drive, name: String): String? = withContext(Dispatchers.IO) {
-        driveService.files().list().setQ("name='$name' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false").setFields("files(id)").execute().files.firstOrNull()?.id
+    private fun getEndOfDay(date: Date): Date = Calendar.getInstance().apply {
+        time = date
+        set(Calendar.HOUR_OF_DAY, 23)
+        set(Calendar.MINUTE, 59)
+        set(Calendar.SECOND, 59)
+        set(Calendar.MILLISECOND, 999)
+    }.time
+
+    private fun getStartAndEndOfDay(date: Date): Pair<Date, Date> {
+        return Pair(getStartOfDay(date), getEndOfDay(date))
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    private suspend fun getSheetsService(account: GoogleSignInAccount): Sheets = withContext(Dispatchers.IO) {
+        val credential = GoogleAccountCredential.usingOAuth2(requireContext(), listOf(SheetsScopes.SPREADSHEETS_READONLY))
+            .setBackOff(com.google.api.client.util.ExponentialBackOff())
+            .apply { selectedAccount = account.account }
+        Sheets.Builder(GoogleNetHttpTransport.newTrustedTransport(), GsonFactory.getDefaultInstance(), credential)
+            .setApplicationName(getString(R.string.app_name))
+            .build()
+    }
+
+    private suspend fun getDriveService(account: GoogleSignInAccount): Drive = withContext(Dispatchers.IO) {
+        val credential = GoogleAccountCredential.usingOAuth2(requireContext(), listOf(DriveScopes.DRIVE_READONLY))
+            .setBackOff(com.google.api.client.util.ExponentialBackOff())
+            .apply { selectedAccount = account.account }
+        Drive.Builder(GoogleNetHttpTransport.newTrustedTransport(), GsonFactory.getDefaultInstance(), credential)
+            .setApplicationName(getString(R.string.app_name))
+            .build()
+    }
+
+    private suspend fun findSheetIdByName(driveService: Drive, name: String): String? = withContext(Dispatchers.IO) {
+        driveService.files().list()
+            .setQ("name='$name' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false")
+            .setFields("files(id)")
+            .execute()
+            .files.firstOrNull()?.id
     }
 }

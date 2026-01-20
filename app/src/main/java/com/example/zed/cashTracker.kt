@@ -23,7 +23,7 @@ class cashTracker : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
+        //binding.backBtnPhysicalInventory.setOnClickListener { finish() }
         // ✅ --- THIS IS THE FIX ---
         // 1. Inflate the layout and initialize the binding object
         binding = ActivityCashTrackerBinding.inflate(layoutInflater)

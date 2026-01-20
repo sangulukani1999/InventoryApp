@@ -58,9 +58,31 @@ class stock_fragment : Fragment() {
     }
 
     private fun setupClickListeners() {
-        binding.varianceAdd.setOnClickListener {
-            // This is the correct place to start the commit process
-            initiateCommitProcess()
+        binding.InventoryStock.setOnClickListener {
+            val currentUser = Firebase.auth.currentUser
+            if (currentUser?.email == null) {
+                Toast.makeText(requireContext(), "Cannot add product: User not signed in.", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+
+            val userEmail = currentUser.email!!
+            val progressDialog = ProgressDialog(requireContext()).apply {
+                setMessage("Verifying user role...")
+                setCancelable(false)
+                show()
+            }
+
+            checkUserRole(userEmail) { exists, parentEmail ->
+                progressDialog.dismiss()
+                if (exists) {
+                    val bottomSheet = MyBottomStockSheet(userEmail, parentEmail) {
+                        fetchInventoryData() // Refresh callback
+                    }
+                    bottomSheet.show(parentFragmentManager, "MyBottomSheet")
+                } else {
+                    Toast.makeText(requireContext(), "Access denied. User not found in registry.", Toast.LENGTH_LONG).show()
+                }
+            }
         }
     }
 

@@ -50,6 +50,7 @@ class goods_received_note : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        //binding.backBtnPhysicalInventory.setOnClickListener { finish() }
         binding = ActivityGoodsReceivedNoteBinding.inflate(layoutInflater)
         setContentView(binding.root)
 

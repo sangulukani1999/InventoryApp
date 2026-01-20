@@ -135,14 +135,23 @@ class transactions : AppCompatActivity() {
                     barcode to cost
                 } ?: emptyMap()
 
-                // ✅ 2. CALCULATE AND STORE TOTAL STOCK CAPITAL
+                // ✅ --- THIS IS THE CORRECTED CALCULATION ---
                 totalStockCapital = 0.0 // Reset before calculating
                 productValues?.drop(1)?.forEach { productRow ->
-                    // Our range D:I means: D=0, E=1, F=2, G=3, H=4, I=5
-                    val caseQuantity = productRow.getOrNull(3)?.toString()?.toDoubleOrNull() ?: 0.0 // Column G
-                    val costPrice = productRow.getOrNull(5)?.toString()?.toDoubleOrNull() ?: 0.0    // Column I
-                    totalStockCapital += costPrice * caseQuantity
+                    // Our range is Products!D:I.
+                    // Column D (Barcode) is index 0.
+                    // Column G (Case Quantity) is index 3.
+                    // Column I (Unit Cost) is index 5.
+                    val caseQuantityStr = productRow.getOrNull(3)?.toString()?.trim() // Column G
+                    val unitCostStr = productRow.getOrNull(5)?.toString()?.trim()     // Column I
+
+                    if (!caseQuantityStr.isNullOrEmpty() && !unitCostStr.isNullOrEmpty()) {
+                        val caseQuantity = caseQuantityStr.toDoubleOrNull() ?: 0.0
+                        val unitCost = unitCostStr.toDoubleOrNull() ?: 0.0
+                        totalStockCapital += unitCost * caseQuantity
+                    }
                 }
+                // --- END OF CORRECTION ---
 
                 if (transactionValues.isNullOrEmpty() || transactionValues.size <= 1) {
                     withContext(Dispatchers.Main) {

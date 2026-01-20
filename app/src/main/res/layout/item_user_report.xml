@@ -36,7 +36,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
+            android:layout_marginBottom="8dp"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
@@ -45,6 +45,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="Outstanding Liability:"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -53,10 +54,37 @@
                 android:layout_height="wrap_content"
                 android:text="K0.00"
                 android:textColor="@color/variance_negative"
+                android:textSize="11sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- ✅ START: NEW VARIANCE SECTION -->
+        <!-- Variances Attributed (All Time Net) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="4dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Net Variances (All Time):"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/variancesTextView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="K0.00"
+                android:textColor="@android:color/holo_orange_dark"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- ✅ START: THIS IS THE NEW SECTION ADDED TO YOUR LAYOUT -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -68,18 +96,20 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Variances Attributed:"
-                android:textStyle="bold"/>
+                android:text="Surpluses This Month (Credit):"
+                android:textSize="11sp"
+                android:textStyle="bold" />
 
             <TextView
-                android:id="@+id/variancesTextView"
+                android:id="@+id/monthPositiveVariancesTextView"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="K0.00"
-                android:textColor="@android:color/holo_orange_dark"
+                android:textColor="@color/variance_positive"
+                android:textSize="11sp"
                 android:textStyle="bold" />
         </LinearLayout>
-        <!-- ✅ END: NEW VARIANCE SECTION -->
+        <!-- ✅ END: NEW SECTION -->
 
 
         <!-- Today's Report -->
@@ -88,6 +118,7 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="4dp"
             android:text="Today"
+            android:textSize="11sp"
             android:textStyle="bold" />
 
         <LinearLayout
@@ -100,13 +131,15 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Shortage:" />
+                android:text="Shortage:"
+                android:textSize="11sp" />
 
             <TextView
                 android:id="@+id/todayShortageTextView"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="K0.00" />
+                android:text="K0.00"
+                android:textSize="11sp" />
         </LinearLayout>
 
         <!-- PAYMENT SECTION -->
@@ -121,7 +154,8 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Pay Liability:" />
+                android:text="Pay Liability:"
+                android:textSize="11sp" />
 
             <!-- EditText for admins to enter payment amount -->
             <EditText
@@ -131,7 +165,8 @@
                 android:gravity="end"
                 android:hint="K0.00"
                 android:inputType="numberDecimal"
-                android:textSize="14sp"
+                android:minHeight="48dp"
+                android:textSize="11sp"
                 android:visibility="gone"
                 tools:visibility="visible" />
 
@@ -155,6 +190,7 @@
             android:layout_height="wrap_content"
             android:layout_marginBottom="4dp"
             android:text="This Month"
+            android:textSize="11sp"
             android:textStyle="bold" />
 
         <LinearLayout
@@ -167,13 +203,15 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Total Shortages:" />
+                android:text="Net Liability:"
+                android:textSize="11sp" />
 
             <TextView
                 android:id="@+id/monthShortagesTextView"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="K0.00" />
+                android:text="K0.00"
+                android:textSize="11sp" />
         </LinearLayout>
 
         <LinearLayout
@@ -185,13 +223,15 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Total Paid:" />
+                android:text="Total Paid:"
+                android:textSize="11sp" />
 
             <TextView
                 android:id="@+id/monthPaidTextView"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="K0.00" />
+                android:text="K0.00"
+                android:textSize="11sp" />
         </LinearLayout>
 
     </LinearLayout>

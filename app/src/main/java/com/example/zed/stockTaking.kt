@@ -13,6 +13,7 @@ import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.Toast.makeText
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -83,9 +84,9 @@ class stockTaking : AppCompatActivity() {
             finish()
         }
 
-        binding.varianceAdd.setOnClickListener {
-            handleVarianceAddClick()
-        }
+        //binding.varianceAdd.setOnClickListener {
+          //  handleVarianceAddClick()
+        //}
 
         binding.barcodeScanner3.setOnClickListener {
             val scannerDialog = BarcodeScannerDialogFragment { scannedBarcode ->
@@ -104,7 +105,7 @@ class stockTaking : AppCompatActivity() {
                 val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).build()
                 val googleSignInClient = GoogleSignIn.getClient(this, gso)
                 googleSignInClient.signOut().addOnCompleteListener {
-                    Toast.makeText(this, "Logged out successfully.", Toast.LENGTH_SHORT).show()
+                    makeText(this, "Logged out successfully.", Toast.LENGTH_SHORT).show()
                     val intent = Intent(this, signup_dashboard_activity::class.java).apply {
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                     }
@@ -187,7 +188,7 @@ class stockTaking : AppCompatActivity() {
                 if (firstMatch != null) {
                     validateBarcodeAndNavigate(firstMatch.barcode)
                 } else {
-                    Toast.makeText(this@stockTaking, "No product found for '$query'", Toast.LENGTH_SHORT).show()
+                    makeText(this@stockTaking, "No product found for '$query'", Toast.LENGTH_SHORT).show()
                 }
                 binding.searchView.clearFocus()
                 return true
@@ -267,7 +268,7 @@ class stockTaking : AppCompatActivity() {
     private fun handleVarianceAddClick() {
         val currentUser = Firebase.auth.currentUser
         if (currentUser?.email == null) {
-            Toast.makeText(this, "Cannot commit: User not signed in.", Toast.LENGTH_SHORT).show()
+            makeText(this, "Cannot commit: User not signed in.", Toast.LENGTH_SHORT).show()
             return
         }
         val userEmail = currentUser.email!!
@@ -318,7 +319,7 @@ class stockTaking : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     progressDialog.dismiss()
                     if (allReviewItems.isEmpty()) {
-                        Toast.makeText(this@stockTaking, "No counted items found to review.", Toast.LENGTH_SHORT).show()
+                        makeText(this@stockTaking, "No counted items found to review.", Toast.LENGTH_SHORT).show()
                     } else {
                         // This function provides the parentEmail, which can be null
                         checkUserRole(userEmail) { exists, parentEmail ->
@@ -333,7 +334,7 @@ class stockTaking : AppCompatActivity() {
                                     }
                                 ).show(supportFragmentManager, "CommitBottomSheet")
                             } else {
-                                Toast.makeText(this@stockTaking, "Access denied. User not found in registry.", Toast.LENGTH_LONG).show()
+                                makeText(this@stockTaking, "Access denied. User not found in registry.", Toast.LENGTH_LONG).show()
                             }
                         }
                     }
@@ -342,7 +343,7 @@ class stockTaking : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     progressDialog.dismiss()
                     Log.e("handleVarianceAddClick", "Error preparing commit: ${e.message}", e)
-                    Toast.makeText(this@stockTaking, "Error preparing commit: ${e.message}", Toast.LENGTH_LONG).show()
+                    makeText(this@stockTaking, "Error preparing commit: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -389,12 +390,12 @@ class stockTaking : AppCompatActivity() {
 
     private fun validateBarcodeAndNavigate(barcode: String) {
         if (barcode.isBlank()) {
-            Toast.makeText(this, "Scanned an empty barcode.", Toast.LENGTH_SHORT).show()
+            makeText(this, "Scanned an empty barcode.", Toast.LENGTH_SHORT).show()
             return
         }
         val productExists = allProductsForSearch.any { it.barcode.trim() == barcode.trim() }
         if (productExists) {
-            Toast.makeText(this, "Product found. Loading details...", Toast.LENGTH_SHORT).show()
+            makeText(this, "Product found. Loading details...", Toast.LENGTH_SHORT).show()
             val intent = Intent(this, InventoryItemDetails::class.java).apply {
                 putExtra("inventoryBarcodes", barcode)
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
