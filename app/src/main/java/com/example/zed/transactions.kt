@@ -96,6 +96,7 @@ class transactions : AppCompatActivity() {
         binding.reloadBtn.setOnClickListener {
             fetchTransactionsFromSheet()
         }
+        
         // Pass null for the customDate parameter here
         binding.AllBtn.setOnClickListener { applyFilter(FilterType.ALL, null) }
         binding.DepletedItem.setOnClickListener { applyFilter(FilterType.TODAY, null) }
@@ -195,9 +196,26 @@ class transactions : AppCompatActivity() {
         }
     }
 
+    // In transactions.kt
+
     private fun parseFromSheetValues(values: List<List<Any>>, headers: List<String>, costMap: Map<String?, Double>): List<Transaction> {
         val transactionList = mutableListOf<Transaction>()
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+
+        // Date format for string-based dates
+        val stringDateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
+
+        // Function to convert Excel serial number to a Java Date
+        fun excelSerialToDate(excelSerial: Double): Date {
+            // Excel's epoch starts on 1900-01-01, but it has a leap year bug for 1900.
+            // The serial number is the number of days since 1899-12-30.
+            val calendar = Calendar.getInstance()
+            calendar.set(1899, 11, 30, 0, 0, 0)
+            calendar.add(Calendar.DATE, excelSerial.toInt())
+            val fractionalPart = excelSerial - excelSerial.toInt()
+            val millisecondsInDay = (fractionalPart * 24 * 60 * 60 * 1000).toLong()
+            calendar.timeInMillis += millisecondsInDay
+            return calendar.time
+        }
 
         for (row in values) {
             if (row.size < 16) {
@@ -208,7 +226,7 @@ class transactions : AppCompatActivity() {
             try {
                 val transactionId = row.getOrNull(0)?.toString()
                 val cartString = row.getOrNull(7)?.toString()
-                val timestampStr = row.getOrNull(8)?.toString()
+                val dateValue = row.getOrNull(8) // Get the raw date value
                 val paymentMethod = row.getOrNull(9)?.toString() ?: "N/A"
                 val totalAmountStr = row.getOrNull(11)?.toString()
                 val user = row.getOrNull(15)?.toString() ?: "Unknown"
@@ -216,6 +234,23 @@ class transactions : AppCompatActivity() {
                 if (transactionId.isNullOrBlank() || cartString.isNullOrBlank() || !cartString.startsWith("[")) {
                     continue
                 }
+
+                // ✅ --- THIS IS THE CORRECTED DATE PARSING LOGIC ---
+                val timestamp: Date? = when (dateValue) {
+                    is String -> {
+                        try {
+                            stringDateFormat.parse(dateValue)
+                        } catch (e: Exception) {
+                            // If parsing the string fails, try to convert it to a Double
+                            dateValue.toDoubleOrNull()?.let { excelSerialToDate(it) }
+                        }
+                    }
+                    is Number -> {
+                        excelSerialToDate(dateValue.toDouble())
+                    }
+                    else -> null
+                }
+                // --- END OF CORRECTION ---
 
                 val cartArray = JSONArray(cartString)
                 val items = mutableListOf<TransactionItem>()
@@ -228,7 +263,7 @@ class transactions : AppCompatActivity() {
                             productName = itemObj.optString("product_name"),
                             price = itemObj.optDouble("price", 0.0),
                             quantity = itemObj.optString("quantity").toIntOrNull() ?: 0,
-                            costPrice = costMap[barcode] ?: 0.0 // Look up cost price from the map
+                            costPrice = costMap[barcode] ?: 0.0
                         )
                     )
                 }
@@ -241,7 +276,7 @@ class transactions : AppCompatActivity() {
                     Transaction(
                         transactionId = transactionId,
                         items = items,
-                        timestamp = timestampStr?.let { try { dateFormat.parse(it) } catch (e: Exception) { null } },
+                        timestamp = timestamp, // Use the new, correctly parsed timestamp
                         paymentMethod = paymentMethod,
                         totalAmount = totalAmountStr?.toDoubleOrNull() ?: 0.0,
                         user = user

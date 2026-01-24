@@ -59,9 +59,15 @@ class detailed_goods_received_note : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding.backBtnPhysicalInventory.setOnClickListener { finish() }
+        // ✅ 1. Initialize binding FIRST.
         binding = ActivityDetailedGoodsReceivedNoteBinding.inflate(layoutInflater)
+
+        // ✅ 2. Set the content view using the binding's root.
         setContentView(binding.root)
+
+        // ✅ 3. NOW it is safe to use 'binding' to access any view.
+        binding.backBtnPhysicalInventory.setOnClickListener { finish() }
+
 
         setupSystemBars()
         setupRecyclerView()

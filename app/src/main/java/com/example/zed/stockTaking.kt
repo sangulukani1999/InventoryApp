@@ -83,6 +83,20 @@ class stockTaking : AppCompatActivity() {
             startActivity(Intent(this, PhysicalInventory::class.java))
             finish()
         }
+        binding.reloadBtn.setOnClickListener {
+            // 1. Get the current fragment from the ViewPager's adapter
+            val currentFragment = supportFragmentManager.findFragmentByTag("f${binding.ViewPager.currentItem}")
+
+            // 2. Check if that fragment is a RefreshableFragment
+            if (currentFragment is RefreshableFragment) {
+                // 3. If it is, call its refreshData() method
+                Toast.makeText(this, "Refreshing data...", Toast.LENGTH_SHORT).show()
+                currentFragment.refreshData()
+            } else {
+                // Fallback in case the fragment isn't refreshable
+                Toast.makeText(this, "Cannot refresh this view.", Toast.LENGTH_SHORT).show()
+            }
+        }
 
         //binding.varianceAdd.setOnClickListener {
           //  handleVarianceAddClick()

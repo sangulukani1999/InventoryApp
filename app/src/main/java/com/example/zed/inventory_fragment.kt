@@ -2,6 +2,7 @@ package com.example.zed
 
 import android.app.ProgressDialog
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -9,6 +10,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import android.widget.Toast.makeText
+import androidx.core.view.WindowCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -43,7 +45,7 @@ import kotlin.collections.component1
 import kotlin.collections.component2
 import kotlin.collections.iterator
 
-class inventory_fragment : Fragment() {
+class inventory_fragment : Fragment(), RefreshableFragment {
     private var _binding: FragmentInventoryFragmentBinding? = null
     private val binding get() = _binding!!
 
@@ -54,12 +56,41 @@ class inventory_fragment : Fragment() {
         savedInstanceState: Bundle?
     ): View {
         _binding = FragmentInventoryFragmentBinding.inflate(inflater, container, false)
-        //binding.varianceAdd.visibility = View.GONE
+       // binding.varianceAdd.visibility = View.GONE
         viewPager = requireActivity().findViewById(R.id.tabContent)
         binding.inventoryRecyclerView.layoutManager = LinearLayoutManager(requireContext())
         setupClickListeners()
         fetchInventoryData()
+        setupSystemBars()
         return binding.root
+    }
+
+    // ✅ 2. Implement the interface method
+    override fun refreshData() {
+        // Simply call the function that already fetches your data.
+        Log.d("Refresh", "Refreshing inventory_fragment data...")
+        fetchInventoryData()
+    }
+
+    private fun setupSystemBars() {
+        // Get the window from the Activity that is hosting this Fragment.
+        val window = requireActivity().window
+
+        // Define your colors
+        val brandColor = Color.parseColor("#0071c1")
+        val brandColorNavigation = Color.parseColor("#0071c1")
+
+        // ✅ CORRECT: Set the status bar color on the activity's window.
+        window.statusBarColor = brandColor
+
+        // ✅ CORRECT: Set the navigation bar color on the activity's window.
+        window.navigationBarColor = brandColorNavigation
+
+        // Status bar has a dark background (#0071c1), so its icons should be light.
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
+
+        // Navigation bar has a light background (#f4f6ff), so its icons should be dark.
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = false
     }
 
     private fun setupClickListeners() {

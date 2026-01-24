@@ -1,13 +1,18 @@
 package com.example.zed
 
+// Import the shared data classes from Models.kt
 import android.app.ProgressDialog
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -30,13 +35,11 @@ import okhttp3.*
 import org.json.JSONArray
 import org.json.JSONException
 import java.io.IOException
-
-// Import the shared data classes from Models.kt
 import com.example.zed.Product
 import com.example.zed.Location
 import com.example.zed.UnitOfMeasure
 
-class notFoundFragment : Fragment() {
+class notFoundFragment : Fragment(),RefreshableFragment {
     private var _binding: ActivityStockFragmentBinding? = null
     private val binding get() = _binding!!
 
@@ -44,41 +47,45 @@ class notFoundFragment : Fragment() {
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
+
         _binding = ActivityStockFragmentBinding.inflate(inflater, container, false)
-        //binding.varianceAdd.visibility = View.GONE
+        binding.InventoryStock.visibility = View.GONE
         binding.StockListRecyclerView.layoutManager = LinearLayoutManager(requireContext())
-        setupClickListeners()
         fetchInventoryData()
+        setupSystemBars()
         return binding.root
     }
-
-    private fun setupClickListeners() {
-        /*
-        binding.varianceAdd.setOnClickListener {
-            val currentUser = Firebase.auth.currentUser
-            if (currentUser?.email == null) {
-                Toast.makeText(requireContext(), "Cannot add product: User not signed in.", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
-            }
-            val userEmail = currentUser.email!!
-            val progressDialog = ProgressDialog(requireContext()).apply {
-                setMessage("Verifying user role...")
-                setCancelable(false)
-                show()
-            }
-            checkUserRole(userEmail) { exists, parentEmail ->
-                progressDialog.dismiss()
-                if (exists) {
-                    MyBottomStockSheet(userEmail, parentEmail) {
-                        fetchInventoryData() // Refresh callback
-                    }.show(parentFragmentManager, "MyBottomSheet")
-                } else {
-                    Toast.makeText(requireContext(), "Access denied. User not found in registry.", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-         */
+    // In notFoundFragment.kt
+    // ✅ 2. Implement the interface method
+    override fun refreshData() {
+        // Simply call the function that already fetches your data.
+        Log.d("Refresh", "Refreshing inventory_fragment data...")
+        fetchInventoryData()
     }
+
+    private fun setupSystemBars() {
+        // Get the window from the Activity that is hosting this Fragment.
+        val window = requireActivity().window
+
+        // Define your colors
+        val brandColor = Color.parseColor("#0071c1")
+        val brandColorNavigation = Color.parseColor("#0071c1")
+
+        // ✅ CORRECT: Set the status bar color on the activity's window.
+        window.statusBarColor = brandColor
+
+        // ✅ CORRECT: Set the navigation bar color on the activity's window.
+        window.navigationBarColor = brandColorNavigation
+
+        // Status bar has a dark background (#0071c1), so its icons should be light.
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
+
+        // Navigation bar has a light background (#f4f6ff), so its icons should be dark.
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightNavigationBars = false
+    }
+
+
+
 
     private fun checkUserRole(email: String, callback: (exists: Boolean, parentEmail: String?) -> Unit) {
         val client = OkHttpClient()

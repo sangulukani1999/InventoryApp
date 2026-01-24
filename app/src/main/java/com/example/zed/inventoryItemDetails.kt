@@ -127,7 +127,41 @@ class InventoryItemDetails : AppCompatActivity() {
             }
             scannerDialog.show(supportFragmentManager, "DetailsScannerDialog")
         }
+        binding.reloadBtn.setOnClickListener {
+            // Get the current barcode from the TextView on the screen.
+            val currentBarcode = binding.itemBarcode.text.toString()
+            if (currentBarcode.isNotBlank()) {
+                Toast.makeText(this, "Refreshing counted entries...", Toast.LENGTH_SHORT).show()
 
+                // Launch a coroutine to re-fetch only the counted data.
+                lifecycleScope.launch(Dispatchers.IO) {
+                    try {
+                        val account = GoogleSignIn.getLastSignedInAccount(this@InventoryItemDetails)
+                            ?: throw IllegalStateException("User is not signed in.")
+                        val sheetsService = getSheetsService(account)
+                        val spreadsheetId = findSheetIdByName(getDriveService(account), "nia-bridge data")
+                            ?: throw IllegalStateException("Spreadsheet 'nia-bridge data' not found.")
+
+                        // Call the existing function to fetch the counts.
+                        fetchStockEntriesFromGoogleSheet(sheetsService, spreadsheetId, currentBarcode)
+
+                        // Switch back to the main thread to update the UI.
+                        withContext(Dispatchers.Main) {
+                            countAdapter.notifyDataSetChanged() // Refresh the RecyclerView
+                            updateCountAndDiff() // Recalculate the variance
+                            Toast.makeText(this@InventoryItemDetails, "Data reloaded!", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            Log.e("ReloadCountData", "Failed to refresh counted data", e)
+                            Toast.makeText(this@InventoryItemDetails, "Error reloading: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            } else {
+                Toast.makeText(this, "Cannot reload: No product is loaded.", Toast.LENGTH_SHORT).show()
+            }
+        }
         // Listener for the image search icon, using the object detection flow.
         binding.imageSearchIcon.setOnClickListener {
             val imageScannerDialog = ImageScannerDialogFragment { capturedImageUri ->
@@ -278,6 +312,8 @@ class InventoryItemDetails : AppCompatActivity() {
     /**
      * Validates a scanned barcode against the local product list before navigating.
      */
+    // In inventoryItemDetails.kt
+
     private fun validateBarcodeAndNavigate(barcode: String) {
         if (barcode == binding.itemBarcode.text.toString()) {
             Toast.makeText(this, "This product is already loaded.", Toast.LENGTH_SHORT).show()
@@ -295,14 +331,11 @@ class InventoryItemDetails : AppCompatActivity() {
                 Toast.makeText(this@InventoryItemDetails, "Product found. Loading details...", Toast.LENGTH_SHORT).show()
                 val intent = Intent(this@InventoryItemDetails, InventoryItemDetails::class.java).apply {
                     putExtra("inventoryBarcodes", barcode)
-                    // ✅ FIX: REMOVED the flags that were clearing the activity stack.
-                    // flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 }
                 startActivity(intent)
 
-                // ✅ Add this finish() call to remove the *current* details screen
-                // from the history, so pressing back doesn't just go to the previous item.
-                finish()
+                // ✅ FIX: By removing this line, the previous activity is kept in the history.
+                // finish()
 
             } else {
                 AlertDialog.Builder(this@InventoryItemDetails)
@@ -313,6 +346,7 @@ class InventoryItemDetails : AppCompatActivity() {
             }
         }
     }
+
 
     /**
      * Fetches all product data from the sheet, finds the current product to display,
