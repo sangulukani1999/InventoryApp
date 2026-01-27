@@ -42,7 +42,8 @@ import java.io.IOException
 data class UserRole(
     val email: String,
     val isSubUser: Boolean = false,
-    val roles: Map<String, Boolean>
+    val roles: Map<String, Boolean>,
+    val parentEmail: String? = null // ✅ ADD THIS
 )
 
 class dashboardActivity : AppCompatActivity() {
@@ -191,37 +192,42 @@ class dashboardActivity : AppCompatActivity() {
 
     // --- All other functions remain the same ---
 
+    // In dashboardActivity.kt
+
     private fun showManageUsersDialog() {
         val dialogBinding = DialogManageUsersBinding.inflate(layoutInflater)
         val usersRecyclerView = dialogBinding.usersRecyclerView
         usersRecyclerView.layoutManager = LinearLayoutManager(this)
-
-        // A view is needed to post the runnable, the RecyclerView is a good choice.
         val viewForPosting = usersRecyclerView
 
+        // Get the currently logged-in admin's email
+        val currentUserEmail = firebaseAuth.currentUser?.email
+        if (currentUserEmail == null) {
+            Toast.makeText(this, "Cannot verify current user.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         val mainDialog = AlertDialog.Builder(this)
-            .setTitle("Manage Users")
+            .setTitle("Manage Your Sub-Users")
             .setView(dialogBinding.root)
             .setNegativeButton("Close", null)
             .setPositiveButton("Add User") { _, _ ->
-                // Post the action to the message queue. This ensures the current
-                // dialog has finished dismissing before the new one is created.
-                viewForPosting.post {
-                    showAddUserDialog()
-                }
+                viewForPosting.post { showAddUserDialog() }
             }
             .create()
 
         val progress = ProgressDialog(this).apply { setMessage("Fetching users..."); show() }
         lifecycleScope.launch {
             try {
-                val users = fetchUsersAndRoles()
+                val allUsers = fetchUsersAndRoles()
+                // ✅ NEW: Filter the list to show only sub-users whose parent is the current user
+                val mySubUsers = allUsers.filter { it.isSubUser && it.parentEmail.equals(currentUserEmail, ignoreCase = true) }
+
                 withContext(Dispatchers.Main) {
                     progress.dismiss()
                     val adapter = UserRolesAdapter(
-                        users,
+                        mySubUsers, // ✅ Pass the filtered list
                         onEditClicked = { user ->
-                            // Use the same 'post' pattern for safety
                             viewForPosting.post {
                                 mainDialog.dismiss()
                                 showEditUserDialog(user)
@@ -247,6 +253,10 @@ class dashboardActivity : AppCompatActivity() {
         mainDialog.show()
     }
 
+    // In dashboardActivity.kt
+
+    // In dashboardActivity.kt
+
     private suspend fun fetchUsersAndRoles(): List<UserRole> = withContext(Dispatchers.IO) {
         val client = okhttp3.OkHttpClient()
         val urlWithParams = "$scriptUrl?action=getUsers"
@@ -254,44 +264,42 @@ class dashboardActivity : AppCompatActivity() {
 
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw IOException("Failed to fetch user data: ${response.code}")
-            val responseBody = response.body?.string() ?: throw IOException("Empty response from server.")
 
-            val userMap = mutableMapOf<String, UserRole>()
+            val responseBody = response.body?.string() ?: throw IOException("Empty response from server.")
             val jsonArray = org.json.JSONArray(responseBody)
+
+            val allUsers = mutableListOf<UserRole>()
             val roleKeys = listOf("stock", "transaction", "grn", "purchase requisition", "inventory count", "cash tracker")
 
+            // Iterate through each user entry from the script
             for (i in 0 until jsonArray.length()) {
                 val jsonObject = jsonArray.getJSONObject(i)
+
+                // Normalize emails
                 val mainEmail = jsonObject.optString("email", "").trim().lowercase()
                 val subUserEmail = jsonObject.optString("email sub user", "").trim().lowercase()
-                val isAdmin = jsonObject.optString("admin", "") == "1"
+                val isAdminRow = jsonObject.optString("admin", "") == "1"
 
-                // Process the main user entry (Column A), as this is where the 'admin' flag is located.
-                if (mainEmail.isNotEmpty()) {
-                    val roles = if (isAdmin) {
-                        // If they are an admin, grant them all roles.
-                        roleKeys.associateWith { true }
-                    } else {
-                        // Otherwise, assign roles as specified in the sheet.
-                        roleKeys.associateWith { key -> jsonObject.optString(key, "") == "1" }
-                    }
+                // ✅ --- THIS IS THE MODIFIED LOGIC ---
 
-                    // If this email is already in the map (e.g., as a sub-user),
-                    // overwrite it with the more important main user data.
-                    userMap[mainEmail] = UserRole(mainEmail, isSubUser = false, roles = roles)
+                // If the row defines an admin, create an admin user with full roles.
+                if (mainEmail.isNotEmpty() && isAdminRow) {
+                    val adminRoles = roleKeys.associateWith { true }
+                    allUsers.add(UserRole(email = mainEmail, isSubUser = false, roles = adminRoles, parentEmail = null))
                 }
 
-                // Now, process the sub-user entry (Column B)
+                // If the row defines a sub-user, create a sub-user with their specific roles.
                 if (subUserEmail.isNotEmpty()) {
-                    val roles = roleKeys.associateWith { key -> jsonObject.optString(key, "") == "1" }
-                    // Only add the sub-user if they don't already exist as a main user (main user data takes precedence)
-                    if (!userMap.containsKey(subUserEmail)) {
-                        userMap[subUserEmail] = UserRole(subUserEmail, isSubUser = true, roles = roles)
-                    }
+                    // For a sub-user, ALWAYS parse their specific roles from the columns.
+                    val subUserRoles = roleKeys.associateWith { key -> jsonObject.optString(key, "") == "1" }
+
+                    // The parent is the main user in the same row.
+                    allUsers.add(UserRole(email = subUserEmail, isSubUser = true, roles = subUserRoles, parentEmail = mainEmail))
                 }
             }
-            // Return the values from the map, which now contains the definitive list.
-            return@withContext userMap.values.toList()
+
+            // Return a list of unique users.
+            return@withContext allUsers.distinctBy { it.email }
         }
     }
 
@@ -321,8 +329,12 @@ class dashboardActivity : AppCompatActivity() {
             .show()
     }
 
+    // In dashboardActivity.kt
+
+    // In dashboardActivity.kt
+
     private fun addUserToSheet(newUserEmail: String, roles: Map<String, Boolean>) {
-        val progress = ProgressDialog(this).apply { setMessage("Adding user..."); show() }
+        val progress = ProgressDialog(this).apply { setMessage("Validating and adding user..."); show() }
         val mainUserEmail = firebaseAuth.currentUser?.email
 
         if (mainUserEmail == null) {
@@ -331,17 +343,44 @@ class dashboardActivity : AppCompatActivity() {
             return
         }
 
-        lifecycleScope.launch(Dispatchers.IO) {
+        lifecycleScope.launch { // This starts on the Main thread
             try {
-                val postBody = org.json.JSONObject().apply {
-                    put("action", "addUser")
-                    put("mainUserEmail", mainUserEmail)
-                    put("newUserEmail", newUserEmail)
-                    put("token", "6BntfqAtwMbHlYOkbcwWipRTWKe2") // Your fixed token
-                    put("roles", org.json.JSONObject(roles.mapValues { if (it.value) "1" else "" }))
+                // Step 1: Fetch all existing users for validation (runs on background thread internally)
+                val allUsers = fetchUsersAndRoles()
+                val userExists = allUsers.any { it.email.equals(newUserEmail, ignoreCase = true) }
+
+                // Step 2: If the user exists, show an error and stop.
+                if (userExists) {
+                    // This is already on the Main thread, so it's safe.
+                    progress.dismiss()
+                    AlertDialog.Builder(this@dashboardActivity)
+                        .setTitle("User Exists")
+                        .setMessage("The email '$newUserEmail' is already registered as a main user or sub-user. It cannot be added again.")
+                        .setPositiveButton("OK", null)
+                        .show()
+                    return@launch
                 }
-                executePostRequest(postBody.toString(), progress)
+
+                // ✅ THE FIX IS HERE
+                // Update the dialog message while still on the Main thread.
+                progress.setMessage("Adding user...")
+
+                // Step 3: Switch to the background thread to perform the network request
+                withContext(Dispatchers.IO) {
+                    val postBody = org.json.JSONObject().apply {
+                        put("action", "addUser")
+                        put("mainUserEmail", mainUserEmail)
+                        put("newUserEmail", newUserEmail)
+                        put("token", "6BntfqAtwMbHlYOkbcwWipRTWKe2")
+                        val scriptRoles = roles.mapValues { if (it.value) "1" else "" }
+                        put("roles", org.json.JSONObject(scriptRoles as Map<*, *>))
+                    }
+                    // Now executePostRequest doesn't need to change the message.
+                    executePostRequest(postBody.toString(), progress)
+                }
+
             } catch (e: Exception) {
+                // handleException already correctly switches to the main thread.
                 handleException(e, progress)
             }
         }

@@ -1,5 +1,3 @@
-// In location_and_uom.kt
-
 package com.example.zed
 
 import android.app.ProgressDialog
@@ -231,7 +229,6 @@ class location_and_uom : Fragment() {
         }
     }
 
-    //<editor-fold desc="UNCHANGED CODE">
     private fun initializeViews(view: View) {
         locationContainer = view.findViewById(R.id.locationContainer)
         location_add = view.findViewById(R.id.location_add)
@@ -251,15 +248,18 @@ class location_and_uom : Fragment() {
         }
     }
 
+    // ✅ STEP 1: CORRECTED observeViewModel
     private fun observeViewModel() {
         sharedViewModel.selectedProductData.observe(viewLifecycleOwner) { data ->
+            // 1. Just store the data.
             pendingProductData = data
-            if (isDynamicDataLoaded) {
-                updateUiFromData(data)
-            }
+            // 2. Attempt to populate the UI. This function will now internally
+            //    check if the dynamic data is also ready.
+            tryPopulateUi()
         }
     }
 
+    // This function is now just a simple bridge
     private fun updateUiFromData(data: SelectedProductData?) {
         if (data != null) {
             populateUiWithData(data)
@@ -268,20 +268,68 @@ class location_and_uom : Fragment() {
         }
     }
 
+    // ✅ STEP 3: ADD THE NEW "GATEKEEPER" FUNCTION
+    private fun tryPopulateUi() {
+        // This is the gatekeeper. It only proceeds if BOTH the dynamic data is loaded
+        // AND the pending product data has been received and is not null.
+        if (isDynamicDataLoaded && pendingProductData != null) {
+            // We have a non-null value for pendingProductData, so we can safely pass it.
+            // The !! is safe here because of the check above.
+            populateUiWithData(pendingProductData!!)
+
+            // Crucially, reset pendingProductData to null after using it.
+            // This prevents the UI from incorrectly re-populating if the user
+            // navigates away and comes back, causing the observer to fire again.
+            pendingProductData = null
+        }
+    }
+
     private fun populateUiWithData(data: SelectedProductData) {
+        val logTag = "FragmentDataLog"
+        Log.d(logTag, "==========================================================")
+        Log.d(logTag, "Populating UI for location_and_uom with new data:")
+        Log.d(logTag, "  - Product: ${data.product.name} (ID: ${data.product.id})")
+        Log.d(logTag, "  - Product Barcode: ${data.product.barcode}")
+        Log.d(logTag, "  - Image URL: ${data.product.imageUrl}")
+        Log.d(logTag, "  - Total Locations Received: ${data.locations.size}")
+        data.locations.forEachIndexed { index, location ->
+            Log.d(logTag, "    - Location[${index}]: ID=${location.id}, Aisle='${location.aisle}', Rack='${location.rack}', Shelf='${location.shelf}'")
+        }
+        Log.d(logTag, "  - Total Units of Measure Received: ${data.units.size}")
+        data.units.forEachIndexed { index, unit ->
+            Log.d(logTag, "    - UOM[${index}]: Desc='${unit.quantityDescription}', Units='${unit.caseUnits}'")
+        }
+        Log.d(logTag, "==========================================================")
+
         clearAllViews()
         occupiedLocationIds.clear()
         newlySelectedLocationIds.clear()
         occupiedLocationIds.addAll(data.product.locationIds)
-        // ✅ FIX: Call addUnitView with the correct signature
-        for (unit in data.units) { addUnitView(unit) }
-        for (location in data.locations) { addUnitLocationView(location, isNew = false) }
+
+        // The dynamic data is now guaranteed to be loaded, so we can safely add the views.
+        data.units.forEach { addUnitView(it) }
+        data.locations.forEach { addUnitLocationView(it, isNew = false) }
+
         dynamicUnitsOfMeasure.clear()
         val spinnerItems = data.units.mapNotNull {
             it.caseUnits.toIntOrNull()?.let { caseUnits -> UnitOfMeasureItem(it.quantityDescription, caseUnits) }
         }
         dynamicUnitsOfMeasure.addAll(spinnerItems)
         uomAdapter.notifyDataSetChanged()
+
+        // ✅ --- THIS IS THE NEW LOGIC ---
+        // Find the unit of measure with the smallest quantity.
+        val itemWithLowestQty = dynamicUnitsOfMeasure.minByOrNull { it.value }
+        if (itemWithLowestQty != null) {
+            // Find the index of that item in the adapter's list.
+            val positionToSelect = dynamicUnitsOfMeasure.indexOf(itemWithLowestQty)
+            if (positionToSelect != -1) {
+                // Set the spinner to that position.
+                unit_of_measure_populates.setSelection(positionToSelect)
+            }
+        }
+        // --- END OF NEW LOGIC ---
+
         qty.setText(data.product.caseQty)
         updateTotalCalculation()
     }
@@ -304,7 +352,6 @@ class location_and_uom : Fragment() {
     }
 
     private fun setupListeners() {
-        // ✅ FIX: Call addUnitView with the correct signature
         btnAddUnit.setOnClickListener { addUnitView(null) }
         location_add.setOnClickListener { addUnitLocationView(null, isNew = true) }
         qty.addTextChangedListener(mainCalculationWatcher)
@@ -391,6 +438,8 @@ class location_and_uom : Fragment() {
         val btnAddShelf = locationView.findViewById<CardView>(R.id.shelf_spinner_add)
         var thisRowSelectedId: String? = location?.id
         thisRowSelectedId?.let { occupiedLocationIds.remove(it) }
+
+        // --- Data and Adapters ---
         val aislesWithPlaceholder = mutableListOf("Select Aisle").apply { addAll(dynamicAisles) }
         val racksWithPlaceholder = mutableListOf("Select Rack").apply { addAll(dynamicRacks) }
         val shelvesWithPlaceholder = mutableListOf("Select Shelf").apply { addAll(dynamicShelves) }
@@ -400,50 +449,8 @@ class location_and_uom : Fragment() {
         aisleAdapter.setDropDownViewResource(R.layout.spinner_item)
         rackAdapter.setDropDownViewResource(R.layout.spinner_item)
         shelfAdapter.setDropDownViewResource(R.layout.spinner_item)
-        aisleSpinner.adapter = aisleAdapter
-        rackSpinner.adapter = ArrayAdapter(requireContext(), R.layout.spinner_item, listOf("Select Aisle First"))
-        shelfSpinner.adapter = ArrayAdapter(requireContext(), R.layout.spinner_item, listOf("Select Rack First"))
-        rackSpinner.isEnabled = false
-        shelfSpinner.isEnabled = false
-        fun updateRackSpinner(selectedAislePosition: Int) {
-            if (selectedAislePosition > 0) {
-                rackSpinner.isEnabled = true
-                rackSpinner.adapter = rackAdapter
-            } else {
-                rackSpinner.isEnabled = false
-                shelfSpinner.isEnabled = false
-                rackSpinner.adapter = ArrayAdapter(requireContext(), R.layout.spinner_item, listOf("Select Aisle First"))
-                shelfSpinner.adapter = ArrayAdapter(requireContext(), R.layout.spinner_item, listOf("Select Rack First"))
-            }
-        }
-        fun updateShelfSpinner(selectedRackPosition: Int) {
-            if (selectedRackPosition > 0) {
-                shelfSpinner.isEnabled = true
-                shelfSpinner.adapter = shelfAdapter
-            } else {
-                shelfSpinner.isEnabled = false
-                shelfSpinner.adapter = ArrayAdapter(requireContext(), R.layout.spinner_item, listOf("Select Rack First"))
-            }
-        }
-        location?.let {
-            val aislePos = aislesWithPlaceholder.indexOf(it.aisle)
-            if (aislePos > 0) {
-                aisleSpinner.setSelection(aislePos)
-                updateRackSpinner(aislePos)
-                val rackPos = racksWithPlaceholder.indexOf(it.rack)
-                if (rackPos > 0) {
-                    rackSpinner.setSelection(rackPos)
-                    updateShelfSpinner(rackPos)
-                    val shelfPos = shelvesWithPlaceholder.indexOf(it.shelf)
-                    if (shelfPos > 0) {
-                        shelfSpinner.setSelection(shelfPos)
-                    }
-                }
-            }
-        }
-        btnAddAisle.setOnClickListener { showAddItemDialog("Add New Aisle", aisleAdapter, aisleSpinner) }
-        btnAddRack.setOnClickListener { showAddItemDialog("Add New Rack", rackAdapter, rackSpinner) }
-        btnAddShelf.setOnClickListener { showAddItemDialog("Add New Shelf", shelfAdapter, shelfSpinner) }
+
+        // --- Validation and Listener Helpers (These are fine and remain unchanged) ---
         val checkLocationAvailability = {
             aisleSpinner.setBackgroundResource(R.drawable.spinner_border)
             rackSpinner.setBackgroundResource(if (rackSpinner.isEnabled) R.drawable.spinner_border else R.drawable.spinner_border_disabled)
@@ -466,6 +473,33 @@ class location_and_uom : Fragment() {
                 }
             }
         }
+        fun updateRackSpinner(selectedAislePosition: Int) {
+            if (selectedAislePosition > 0) {
+                rackSpinner.isEnabled = true
+                rackSpinner.adapter = rackAdapter // This is fine for user interaction
+            } else {
+                rackSpinner.isEnabled = false
+                shelfSpinner.isEnabled = false
+                rackSpinner.adapter = ArrayAdapter(requireContext(), R.layout.spinner_item, listOf("Select Aisle First"))
+                shelfSpinner.adapter = ArrayAdapter(requireContext(), R.layout.spinner_item, listOf("Select Rack First"))
+            }
+        }
+        fun updateShelfSpinner(selectedRackPosition: Int) {
+            if (selectedRackPosition > 0) {
+                shelfSpinner.isEnabled = true
+                shelfSpinner.adapter = shelfAdapter // This is fine for user interaction
+            } else {
+                shelfSpinner.isEnabled = false
+                shelfSpinner.adapter = ArrayAdapter(requireContext(), R.layout.spinner_item, listOf("Select Rack First"))
+            }
+        }
+
+        // --- Assign everything for user interaction first ---
+        aisleSpinner.adapter = aisleAdapter
+        rackSpinner.adapter = ArrayAdapter(requireContext(), R.layout.spinner_item, listOf("Select Aisle First"))
+        shelfSpinner.adapter = ArrayAdapter(requireContext(), R.layout.spinner_item, listOf("Select Rack First"))
+        rackSpinner.isEnabled = false
+        shelfSpinner.isEnabled = false
         aisleSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 updateRackSpinner(position)
@@ -486,6 +520,78 @@ class location_and_uom : Fragment() {
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
+
+        // ✅ --- START: FINAL, DIRECT POPULATION LOGIC ---
+        location?.let { loc ->
+            val logTag = "SpinnerPopulation"
+            Log.d(logTag, "--- STARTING POPULATION FOR '${loc.aisle}', '${loc.rack}', '${loc.shelf}' ---")
+
+            // Trim all incoming data to remove whitespace
+            val aisleToFind = loc.aisle.trim()
+            val rackToFind = loc.rack.trim()
+            val shelfToFind = loc.shelf.trim()
+
+            // Find positions by comparing trimmed strings
+            val aislePos = aislesWithPlaceholder.indexOfFirst { it.trim().equals(aisleToFind, ignoreCase = true) }
+            val rackPos = racksWithPlaceholder.indexOfFirst { it.trim().equals(rackToFind, ignoreCase = true) }
+            val shelfPos = shelvesWithPlaceholder.indexOfFirst { it.trim().equals(shelfToFind, ignoreCase = true) }
+
+            Log.d(logTag, "Searching for Aisle: '$aisleToFind'. Found at position: $aislePos")
+            Log.d(logTag, "Searching for Rack: '$rackToFind'. Found at position: $rackPos")
+            Log.d(logTag, "Searching for Shelf: '$shelfToFind'. Found at position: $shelfPos")
+
+            // Only proceed if ALL THREE locations are found in their respective lists
+            if (aislePos > 0 && rackPos > 0 && shelfPos > 0) {
+                Log.d(logTag, "All positions are valid. Preparing to set spinners.")
+
+                // Temporarily disable the listeners to prevent them from interfering
+                val aisleOriginalListener = aisleSpinner.onItemSelectedListener
+                val rackOriginalListener = rackSpinner.onItemSelectedListener
+                val shelfOriginalListener = shelfSpinner.onItemSelectedListener
+                aisleSpinner.onItemSelectedListener = null
+                rackSpinner.onItemSelectedListener = null
+                shelfSpinner.onItemSelectedListener = null
+
+                // STEP 1: Set the REAL adapters and enable the spinners immediately.
+                // This is the crucial fix for the adapter issue.
+                rackSpinner.adapter = rackAdapter
+                shelfSpinner.adapter = shelfAdapter
+                rackSpinner.isEnabled = true
+                shelfSpinner.isEnabled = true
+
+                // STEP 2: Post the selection to the UI thread. This runs after the UI
+                // has processed the adapter changes from Step 1.
+                locationView.post {
+                    Log.d(logTag, "UI is ready. Setting selections now.")
+
+                    aisleSpinner.setSelection(aislePos, false)
+                    rackSpinner.setSelection(rackPos, false)
+                    shelfSpinner.setSelection(shelfPos, false)
+
+                    Log.d(logTag, "--- POPULATION COMPLETE ---")
+
+                    // Restore the listeners for user interaction
+                    aisleSpinner.onItemSelectedListener = aisleOriginalListener
+                    rackSpinner.onItemSelectedListener = rackOriginalListener
+                    shelfSpinner.onItemSelectedListener = shelfOriginalListener
+                    Log.d(logTag, "Listeners restored.")
+                }
+            } else {
+                // This will clearly log which part failed
+                Log.e(logTag, "ERROR: One or more positions were not found. Halting population.")
+                if (aislePos <= 0) Log.e(logTag, "-> Aisle '${aisleToFind}' NOT FOUND in adapter list.")
+                if (rackPos <= 0) Log.e(logTag, "-> Rack '${rackToFind}' NOT FOUND in adapter list.")
+                if (shelfPos <= 0) Log.e(logTag, "-> Shelf '${shelfToFind}' NOT FOUND in adapter list.")
+            }
+        }
+        // ✅ --- END: FINAL LOGIC ---
+
+
+
+        // --- Add/Remove Listeners ---
+        btnAddAisle.setOnClickListener { showAddItemDialog("Add New Aisle", aisleAdapter, aisleSpinner) }
+        btnAddRack.setOnClickListener { showAddItemDialog("Add New Rack", rackAdapter, rackSpinner) }
+        btnAddShelf.setOnClickListener { showAddItemDialog("Add New Shelf", shelfAdapter, shelfSpinner) }
         btnRemove.setOnClickListener {
             thisRowSelectedId?.let {
                 newlySelectedLocationIds.remove(it)
@@ -497,8 +603,10 @@ class location_and_uom : Fragment() {
         locationContainer.addView(locationView)
         updateLocationCount()
     }
+
     private fun updateUnitCount() { unitCounterTextView.text = unitContainer.childCount.toString() }
     private fun updateLocationCount() { locationCounterTextView.text = locationContainer.childCount.toString() }
+
     private suspend fun gatherFinalLocationIdsFromUi(newLocationIds: List<String>): List<String> {
         val finalLocationIds = mutableListOf<String>()
         withContext(Dispatchers.Main) {
@@ -645,6 +753,8 @@ class location_and_uom : Fragment() {
             }
         }
     }
+
+    // ✅ STEP 2: CORRECTED fetchDynamicData
     private fun fetchDynamicData() {
         progressDialog.setMessage("Loading available locations...")
         progressDialog.show()
@@ -678,18 +788,23 @@ class location_and_uom : Fragment() {
                     dynamicShelves.clear(); dynamicShelves.addAll(shelvesFromSheet.sorted())
                     locationNameToIdMap.clear(); locationNameToIdMap.putAll(tempLocationMap)
                     progressDialog.dismiss()
+
+                    // 1. Just announce that the data is ready.
                     isDynamicDataLoaded = true
-                    updateUiFromData(pendingProductData)
+                    // 2. Attempt to populate the UI. This function will now internally
+                    //    check if the product data has also arrived.
+                    tryPopulateUi()
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     progressDialog.dismiss()
-                    isDynamicDataLoaded = true
+                    isDynamicDataLoaded = true // Set to true anyway to avoid a deadlock
                     Toast.makeText(context, "Failed to load location data: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }
     }
+
     private fun showAddItemDialog(title: String, adapter: ArrayAdapter<String>, spinner: Spinner?) {
         val input = EditText(requireContext()).apply { hint = "Enter new value" }
         val container = FrameLayout(requireContext())
@@ -744,5 +859,4 @@ class location_and_uom : Fragment() {
             .setFields("files(id, owners, shared)").execute()
         result.files.firstOrNull { file -> (file.owners?.any { it.me == true } == true) || (file.shared == true) }?.id
     }
-    //</editor-fold>
 }
