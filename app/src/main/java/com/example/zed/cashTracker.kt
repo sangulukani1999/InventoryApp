@@ -14,7 +14,7 @@ import cashTrackerAdapter
 import com.example.zed.databinding.ActivityCashTrackerBinding
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.tabs.TabLayoutMediator
-import stockAdapter
+
 
 class cashTracker : AppCompatActivity() {
 

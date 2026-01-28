@@ -28,10 +28,9 @@ class stockListAdaptor(
     private val context: Context
 ) : RecyclerView.Adapter<stockListAdaptor.MenuViewHolder>() {
 
-    // ✅ REMOVED: The manual driveService is no longer needed here.
-    // Coil handles image loading directly from the URL.
-    // ✅ 1. Add a variable to track the selected position
-    private var selectedPosition = RecyclerView.NO_POSITION
+    // ✅ THIS IS THE FIX: A public property for external highlighting (from search).
+    // The fragment will set this value.
+    var highlightedPosition: Int = RecyclerView.NO_POSITION
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MenuViewHolder {
         val binding = StockItemListFragmentBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -49,29 +48,33 @@ class stockListAdaptor(
             binding.inventoryCardView.setOnClickListener {
                 val position = adapterPosition
                 if (position != RecyclerView.NO_POSITION) {
-                    notifyItemChanged(selectedPosition) // Un-highlight the old item
-                    selectedPosition = position
-                    notifyItemChanged(selectedPosition) // Highlight the new item
+                    // When an item is clicked, update the highlighted position
+                    val previouslyHighlighted = highlightedPosition
+                    highlightedPosition = position
 
+                    // Notify to un-highlight the old item and highlight the new one
+                    if (previouslyHighlighted != RecyclerView.NO_POSITION) {
+                        notifyItemChanged(previouslyHighlighted)
+                    }
+                    notifyItemChanged(highlightedPosition)
 
+                    // Perform the original click action
                     onItemClick(position)
                 }
             }
         }
 
         fun bind(position: Int) {
-
-            // ✅ 3. Change the background color based on selection state
-            if (position == selectedPosition) {
+            // Change the background color based on the public highlightedPosition property
+            if (position == highlightedPosition) {
                 // Use a color from your colors.xml for consistency
                 binding.inventoryCardView.setCardBackgroundColor(ContextCompat.getColor(context, R.color.item_selected_background))
             } else {
-                // Set it back to the default color (assuming it's white or transparent)
+                // Set it back to the default color
                 binding.inventoryCardView.setCardBackgroundColor(Color.WHITE)
             }
 
             binding.apply {
-                // Define a master log tag
                 val logTag = "DataFlow"
 
                 val currentBarcode = inventoryBarcodes[position]
@@ -82,7 +85,7 @@ class stockListAdaptor(
                 productNameInventory.text = currentProductName
                 ProductPriceInventory.text = "ZMW ${productPriceInventory[position]}"
 
-                // --- Primary unit/quantity logic (unchanged) ---
+                // --- Primary unit/quantity logic ---
                 val unitsForThisProduct = inventoryUnits.getOrNull(position) ?: emptyList()
 
                 if (unitsForThisProduct.isNotEmpty()) {
@@ -101,27 +104,20 @@ class stockListAdaptor(
                     inventoryVariance.text = String.format("%.0f", baseQty)
                 }
 
-                // ✅ --- START OF CORRECTED IMAGE LOADING LOGIC ---
-                // This entire block is simplified to let Coil do the work.
-
+                // --- Image Loading Logic ---
                 val imageUrl = ProductImageUrl.getOrNull(position)
 
                 if (!imageUrl.isNullOrBlank()) {
-                    // Let Coil handle the Google Drive URL directly. It's smart enough
-                    // to follow redirects and load the image efficiently.
                     productImage.load(imageUrl) {
                         crossfade(true)
-                        placeholder(R.drawable.ic_placeholder) // Show a placeholder while loading
-                        error(R.drawable.ic_error_loading)     // Show an error image if it fails
+                        placeholder(R.drawable.ic_placeholder)
+                        error(R.drawable.ic_error_loading)
                     }
                 } else {
-                    // If the URL is empty or null, show the placeholder.
                     productImage.setImageResource(R.drawable.ic_placeholder)
                 }
-                // --- END OF CORRECTED IMAGE LOADING LOGIC ---
 
-
-                // --- Bubble Logic (unchanged) ---
+                // --- Bubble Logic ---
                 val locationsForItem = inventoryLocations.getOrNull(position) ?: emptyList()
                 if (locationsForItem.isEmpty()) {
                     recyclerViewBubble.visibility = View.GONE
@@ -141,7 +137,7 @@ class stockListAdaptor(
                     recyclerViewBubble.adapter = bubbleAdapter
                 }
 
-                // --- Unit of Measure Recycler View Logic (unchanged) ---
+                // --- Unit of Measure Recycler View Logic ---
                 if (unitsForThisProduct.isEmpty()) {
                     productQtyRecyclerView.visibility = View.GONE
                 } else {

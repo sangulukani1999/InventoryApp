@@ -45,6 +45,10 @@ class stock_fragment : Fragment() {
     private lateinit var viewPager: ViewPager2
     private val sharedViewModel: SharedViewModel by activityViewModels()
 
+    // Hold a reference to the adapter's data for searching
+    private val currentlyDisplayedProducts = mutableListOf<Product>()
+    private var recyclerViewAdapter: stockListAdaptor? = null
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
@@ -125,9 +129,12 @@ class stock_fragment : Fragment() {
                 Log.d(logTag, "Processing ${countedQuantities.size} items from 'countData'.")
 
                 // 2. Process and create the list of CommitItems
+                // In stock_fragment.kt -> initiateCommitProcess()
+
+// 2. Process and create the list of CommitItems
                 for ((barcode, countedData) in countedQuantities) {
                     val product = productsMap[barcode] ?: continue
-                    val countedQty = countedData.first
+                    val countedQty = countedData.first // This is an Int
                     val countedBy = countedData.second
                     val systemStock = product.caseQty.toDoubleOrNull() ?: 0.0
                     val variance = countedQty.toDouble() - systemStock
@@ -138,13 +145,16 @@ class stock_fragment : Fragment() {
                             barcode = product.barcode,
                             imageUrl = product.imageUrl,
                             variance = variance,
+                            // ✅ FIX: Pass the 'countedQty' Int directly.
+                            // Your CommitItem data class should expect an Int for this parameter.
                             countedQty = countedQty,
                             unitCost = product.unitCost.toDoubleOrNull() ?: 0.0,
-                            locations = emptyList(), // Location data is not needed in the commit sheet display itself
+                            locations = emptyList(),
                             countedBy = countedBy
                         )
                     )
                 }
+
 
                 Log.d(logTag, "Finished preparation. Found ${allReviewItems.size} items to review.")
 
@@ -155,12 +165,13 @@ class stock_fragment : Fragment() {
                         Toast.makeText(requireContext(), "No counted items found to review.", Toast.LENGTH_SHORT).show()
                     } else {
                         // 4. ✅ Show the bottom sheet WITH the pre-fetched data
-                        bottom_sheet_commit(
+                        val commitSheet = bottom_sheet_commit(
                             userEmail = userEmail,
                             parentEmail = null, // Adjust if needed
                             initialItems = allReviewItems, // Pass the prepared data
                             onStockAdded = { fetchInventoryData() } // The refresh callback remains
-                        ).show(parentFragmentManager, "CommitBottomSheet")
+                        )
+                        commitSheet.show(parentFragmentManager, "CommitBottomSheet")
                     }
                 }
             } catch (e: Exception) {
@@ -387,7 +398,7 @@ class stock_fragment : Fragment() {
                     val unitsForThisProduct = unitsMap[product.barcode] ?: emptyList()
                     val stockInCases = product.caseQty.toDoubleOrNull() ?: 0.0
                     val totalStockInUnits = if (unitsForThisProduct.isNotEmpty()) {
-                        val highestUnit = unitsForThisProduct.mapNotNull { it.caseUnits.toIntOrNull() }.maxOrNull() ?: 1
+                        val highestUnit = unitsForThisProduct.mapNotNull { it.caseUnits?.toIntOrNull() }.maxOrNull() ?: 1
                         stockInCases * highestUnit
                     } else {
                         stockInCases
@@ -431,13 +442,16 @@ class stock_fragment : Fragment() {
                 }
                 Log.d(logTag, "Finished filtering. Passing ${names.size} products to the adapter.")
 
+                currentlyDisplayedProducts.clear()
+                currentlyDisplayedProducts.addAll(finalProducts)
+
 
                 // --- 6. Set Adapter on Main Thread ---
                 withContext(Dispatchers.Main) {
                     progressDialog.dismiss()
                     Log.d(logTag, "--- Step 6: Setting Adapter on Main Thread ---")
 
-                    val adapter = stockListAdaptor(
+                    recyclerViewAdapter = stockListAdaptor(
                         account = account,
                         onItemClick = { position ->
                             // GET THE FULL DATA FROM YOUR PRE-FETCHED LISTS
@@ -472,7 +486,7 @@ class stock_fragment : Fragment() {
                         context = requireContext(),
                         countedItems = countedItemsSet,
                     )
-                    binding.StockListRecyclerView.adapter = adapter
+                    binding.StockListRecyclerView.adapter = recyclerViewAdapter
                     Log.d(logTag, "====== INVENTORY FETCH AND DISPLAY COMPLETE ======")
                 }
 
@@ -526,5 +540,42 @@ class stock_fragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    /**
+     * This public function can be called by the parent activity (`stockList`)
+     * to find and highlight an item in the RecyclerView.
+     */
+    fun findAndHighlightItem(barcode: String) {
+        // Ensure the adapter's data is available for searching
+        if (currentlyDisplayedProducts.isEmpty()) {
+            Toast.makeText(requireContext(), "Product list is not ready or is empty. Please try again.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Find the index of the item in the currently displayed list
+        val itemIndex = currentlyDisplayedProducts.indexOfFirst { it.barcode == barcode }
+
+        if (itemIndex != -1) {
+            // Use the RecyclerView's layout manager to scroll to the position
+            val layoutManager = binding.StockListRecyclerView.layoutManager as? LinearLayoutManager
+            layoutManager?.scrollToPositionWithOffset(itemIndex, 0)
+
+            // Here you would notify your adapter to highlight the item.
+            // This requires a custom implementation in your `stockListAdaptor`.
+            // For example, if your adapter has a `highlightedPosition` property:
+            recyclerViewAdapter?.let { adapter ->
+                val previousPosition = adapter.highlightedPosition
+                adapter.highlightedPosition = itemIndex
+                if (previousPosition != -1) {
+                    adapter.notifyItemChanged(previousPosition) // Un-highlight old one
+                }
+                adapter.notifyItemChanged(itemIndex) // Highlight new one
+            }
+
+            Toast.makeText(requireContext(), "Found: ${currentlyDisplayedProducts[itemIndex].name}", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(requireContext(), "Product with barcode '$barcode' not found in the current filtered list.", Toast.LENGTH_LONG).show()
+        }
     }
 }
