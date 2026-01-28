@@ -7,22 +7,58 @@ import android.net.Uri
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
+import android.util.Log
 import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.viewpager2.widget.ViewPager2
 import coil.load
 import com.example.zed.databinding.FragmentDetailsStockBinding
 import com.github.mikephil.charting.charts.BarChart
+import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.data.BarData
 import com.github.mikephil.charting.data.BarDataSet
 import com.github.mikephil.charting.data.BarEntry
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
-import com.github.mikephil.charting.components.XAxis
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
+import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport
+import com.google.api.client.json.gson.GsonFactory
+import com.google.api.services.drive.Drive
+import com.google.api.services.drive.DriveScopes
+import com.google.api.services.sheets.v4.Sheets
+import com.google.api.services.sheets.v4.SheetsScopes
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.*
+import java.util.concurrent.TimeUnit
+
+// ✅ --- START: HELPER DATA CLASSES ---
+data class SaleRecord(
+    val timestamp: Date,
+    val quantity: Int
+)
+
+enum class TimeFilter {
+    DAILY,
+    WEEKLY,
+    MONTHLY,
+    YEARLY
+}
+// ✅ --- END: HELPER DATA CLASSES ---
+
 
 class detailsStock : Fragment() {
 
@@ -32,8 +68,6 @@ class detailsStock : Fragment() {
     private val sharedViewModel: SharedViewModel by activityViewModels()
 
     private lateinit var viewPager: ViewPager2
-
-    // A flag to prevent the TextWatcher from triggering when we programmatically set the text
     private var isPopulating = false
 
     override fun onCreateView(
@@ -57,9 +91,10 @@ class detailsStock : Fragment() {
         // --- OBSERVE SHARED VIEWMODEL ---
         sharedViewModel.selectedProductData.observe(viewLifecycleOwner) { data ->
             if (data != null) {
-                // When observing, wrap populateDetails in a flag to prevent infinite loops
                 isPopulating = true
                 populateDetails(data)
+                // ✅ --- NEW: Fetch sales data for the chart ---
+                fetchSalesDataForProduct(data.product.barcode)
                 isPopulating = false
             } else {
                 clearDetails()
@@ -67,28 +102,21 @@ class detailsStock : Fragment() {
         }
     }
 
-    // ✅ --- START: CORRECTED IMAGE LAUNCHER ---
     private val imagePickerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            // This safely gets the URI whether from the camera (as a string extra) or the gallery (as data).
             val imageUri: Uri? = result.data?.data
                 ?: result.data?.getStringExtra("captured_image_uri")?.let { Uri.parse(it) }
 
             imageUri?.let { uri ->
-                // 1. Load the new image into the ImageView using Coil for immediate UI feedback.
                 binding.stockImage.load(uri) {
                     crossfade(true)
                     placeholder(R.drawable.ic_placeholder)
                     error(R.drawable.ic_error_loading)
                 }
-
-                // 2. Update the ViewModel so the new image path can be saved later.
-                // This now stores a local file URI (e.g., content://...)
                 sharedViewModel.updateProductImage(uri.toString())
             }
         }
     }
-    // ✅ --- END: CORRECTED IMAGE LAUNCHER ---
 
     private fun setupListeners() {
         binding.btnImage.setOnClickListener { selectImage() }
@@ -103,23 +131,24 @@ class detailsStock : Fragment() {
         binding.locationUom.setOnClickListener {
             viewPager.currentItem = 2
         }
+
+        // ✅ --- NEW: Listeners for chart filter buttons ---
+        binding.daily.setOnClickListener { updateChartWithFilter(TimeFilter.DAILY) }
+        binding.weekly.setOnClickListener { updateChartWithFilter(TimeFilter.WEEKLY) }
+        binding.monthly.setOnClickListener { updateChartWithFilter(TimeFilter.MONTHLY) }
+        binding.yearly.setOnClickListener { updateChartWithFilter(TimeFilter.YEARLY) }
     }
 
-    /**
-     * Sets up TextWatchers to listen for changes in the EditText fields
-     * and automatically updates the SharedViewModel.
-     */
     private fun setupDetailListeners() {
         val textWatcher = object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
-                // Only update the ViewModel if the change was made by the user, not by the program
                 if (!isPopulating) {
                     sharedViewModel.updateProductDetails(
                         newName = binding.productName.text.toString(),
                         newBarcode = binding.barcode.text.toString(),
-                        newCaseQty = binding.units.text.toString(), // Renamed for clarity
+                        newCaseQty = binding.units.text.toString(),
                         newMinOrder = binding.minOrder.text.toString(),
                         newUnitCost = binding.unitCost.text.toString()
                     )
@@ -127,14 +156,12 @@ class detailsStock : Fragment() {
             }
         }
 
-        // Attach the watcher to all relevant EditText fields
         binding.productName.addTextChangedListener(textWatcher)
         binding.barcode.addTextChangedListener(textWatcher)
         binding.units.addTextChangedListener(textWatcher)
         binding.minOrder.addTextChangedListener(textWatcher)
         binding.unitCost.addTextChangedListener(textWatcher)
     }
-
 
     private fun selectImage() {
         val options = arrayOf("Take Picture", "Choose from Gallery")
@@ -155,32 +182,35 @@ class detailsStock : Fragment() {
             .show()
     }
 
-    /**
-     * Populates the UI fields with data from the SelectedProductData object.
-     */
     private fun populateDetails(data: SelectedProductData) {
-        // This will now correctly load from a web URL (https://) or a local file URI (content://)
         binding.stockImage.load(data.product.imageUrl) {
             crossfade(true)
             placeholder(R.drawable.ic_placeholder)
             error(R.drawable.ic_error_loading)
         }
 
-        binding.barcode.setText(data.product.barcode)
-        binding.productName.setText(data.product.name)
+        if (binding.barcode.text.toString() != data.product.barcode) {
+            binding.barcode.setText(data.product.barcode)
+        }
+        if (binding.productName.text.toString() != data.product.name) {
+            binding.productName.setText(data.product.name)
+        }
+        if (binding.units.text.toString() != data.product.caseQty) {
+            binding.units.setText(data.product.caseQty)
+        }
+        if (binding.minOrder.text.toString() != data.product.minOrder) {
+            binding.minOrder.setText(data.product.minOrder)
+        }
 
         val singleUnit = data.units.firstOrNull {
             it.quantityDescription.equals("unit", ignoreCase = true) || it.quantityDescription.equals("single", ignoreCase = true)
         }
-
-        binding.unitCost.setText(singleUnit?.cost ?: data.product.unitCost)
-        binding.units.setText(data.product.caseQty)
-        binding.minOrder.setText(data.product.minOrder)
+        val unitCost = singleUnit?.cost ?: data.product.unitCost
+        if (binding.unitCost.text.toString() != unitCost) {
+            binding.unitCost.setText(unitCost)
+        }
     }
 
-    /**
-     * Clears all fields and shows a placeholder state.
-     */
     private fun clearDetails() {
         binding.stockImage.setImageResource(R.drawable.ic_placeholder)
         binding.barcode.setText("")
@@ -188,46 +218,237 @@ class detailsStock : Fragment() {
         binding.unitCost.setText("")
         binding.units.setText("")
         binding.minOrder.setText("")
+        // Clear the chart when no product is selected
+        binding.barChart.clear()
+        binding.barChart.invalidate()
+    }
+
+    // ✅ --- START: CHART AND SALES DATA LOGIC ---
+
+    private var allSalesForProduct: List<SaleRecord> = emptyList()
+    private var activeFilter: TimeFilter = TimeFilter.DAILY // Default filter
+
+    /**
+     * Fetches all transactions and filters them for the current product.
+     */
+    private fun fetchSalesDataForProduct(productBarcode: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val account = GoogleSignIn.getLastSignedInAccount(requireContext())
+                    ?: throw IOException("User not signed in.")
+                val sheetsService = getSheetsService(account)
+                val spreadsheetId = findSheetIdByName(getDriveService(account), "nia-bridge data")
+                    ?: throw IOException("Spreadsheet not found.")
+
+                // Fetch the 'cart' and 'timestamp' columns from the Transactions sheet
+                val range = "Transactions!H:I" // Column H is cart, Column I is timestamp
+                val response = sheetsService.spreadsheets().values().get(spreadsheetId, range).execute()
+                val values = response.getValues()
+
+                if (values.isNullOrEmpty()) {
+                    allSalesForProduct = emptyList()
+                } else {
+                    val sales = mutableListOf<SaleRecord>()
+                    val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
+
+                    // Start from the second row to skip headers
+                    for (row in values.drop(1)) {
+                        val cartString = row.getOrNull(0)?.toString() // Cart is in the first column of our range (H)
+                        val timestampStr = row.getOrNull(1)?.toString() // Timestamp is in the second (I)
+
+                        if (cartString.isNullOrBlank() || timestampStr.isNullOrBlank()) continue
+
+                        try {
+                            val timestamp = dateFormat.parse(timestampStr) ?: continue
+                            val cartArray = JSONArray(cartString)
+                            for (i in 0 until cartArray.length()) {
+                                val item = cartArray.getJSONObject(i)
+                                if (item.getString("id") == productBarcode) {
+                                    val quantity = item.getString("quantity").toIntOrNull() ?: 0
+                                    sales.add(SaleRecord(timestamp, quantity))
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e("SalesFetch", "Error parsing row: $row", e)
+                        }
+                    }
+                    allSalesForProduct = sales
+                }
+
+                // Switch to the main thread to update the UI
+                withContext(Dispatchers.Main) {
+                    updateChartWithFilter(activeFilter) // Apply the current filter
+                }
+
+            } catch (e: Exception) {
+                Log.e("SalesFetch", "Failed to fetch sales data", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(requireContext(), "Could not load sales data.", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
     }
 
     /**
-     * Sets up the BarChart with sample data.
+     * Called when a filter button is clicked. Sets the active filter and updates the chart.
+     */
+    private fun updateChartWithFilter(filter: TimeFilter) {
+        activeFilter = filter
+        // Update button backgrounds
+        updateFilterButtonUI()
+
+        val now = Calendar.getInstance()
+        val (aggregatedData, labels) = when (filter) {
+            TimeFilter.DAILY -> aggregateData(allSalesForProduct, now, Calendar.DAY_OF_YEAR, 7, "EEE") // Mon, Tue
+            TimeFilter.WEEKLY -> aggregateData(allSalesForProduct, now, Calendar.WEEK_OF_YEAR, 4, "'Week' W") // Week 23
+            TimeFilter.MONTHLY -> aggregateData(allSalesForProduct, now, Calendar.MONTH, 12, "MMM") // Jun, Jul
+            TimeFilter.YEARLY -> aggregateData(allSalesForProduct, now, Calendar.YEAR, 5, "yyyy") // 2023, 2024
+        }
+
+        val entries = aggregatedData.mapIndexed { index, value ->
+            BarEntry(index.toFloat(), value.toFloat())
+        }
+
+        updateBarChart(entries, labels, "Sales")
+    }
+
+    /**
+     * Aggregates sales data based on a given time period.
+     */
+    private fun aggregateData(
+        sales: List<SaleRecord>,
+        now: Calendar,
+        calendarField: Int,
+        numberOfPeriods: Int,
+        labelFormat: String
+    ): Pair<List<Int>, List<String>> {
+        val aggregatedData = IntArray(numberOfPeriods)
+        val labels = Array(numberOfPeriods) { "" }
+        val sdf = SimpleDateFormat(labelFormat, Locale.getDefault())
+
+        // Create labels for the past periods
+        for (i in (numberOfPeriods - 1) downTo 0) {
+            val periodCal = now.clone() as Calendar
+            periodCal.add(calendarField, -i)
+            labels[numberOfPeriods - 1 - i] = sdf.format(periodCal.time)
+        }
+
+        val cutoff = now.clone() as Calendar
+        cutoff.add(calendarField, -(numberOfPeriods - 1))
+        cutoff.set(Calendar.HOUR_OF_DAY, 0) // Start of the first period
+
+        // Filter sales within the relevant timeframe and aggregate them
+        sales.filter { it.timestamp.after(cutoff.time) }.forEach { sale ->
+            val saleCal = Calendar.getInstance().apply { time = sale.timestamp }
+            val diff = now.timeInMillis - saleCal.timeInMillis
+
+            val periodIndex = when (calendarField) {
+                Calendar.DAY_OF_YEAR -> TimeUnit.MILLISECONDS.toDays(diff).toInt()
+                Calendar.WEEK_OF_YEAR -> (TimeUnit.MILLISECONDS.toDays(diff) / 7).toInt()
+                Calendar.MONTH -> {
+                    (now.get(Calendar.YEAR) * 12 + now.get(Calendar.MONTH)) -
+                            (saleCal.get(Calendar.YEAR) * 12 + saleCal.get(Calendar.MONTH))
+                }
+                Calendar.YEAR -> now.get(Calendar.YEAR) - saleCal.get(Calendar.YEAR)
+                else -> -1
+            }
+
+            if (periodIndex in 0 until numberOfPeriods) {
+                aggregatedData[numberOfPeriods - 1 - periodIndex] += sale.quantity
+            }
+        }
+
+        return Pair(aggregatedData.toList(), labels.toList())
+    }
+
+    private fun updateFilterButtonUI() {
+        val buttons = mapOf(
+            TimeFilter.DAILY to binding.daily,
+            TimeFilter.WEEKLY to binding.weekly,
+            TimeFilter.MONTHLY to binding.monthly,
+            TimeFilter.YEARLY to binding.yearly
+        )
+        val activeColor = ContextCompat.getColor(requireContext(), R.color.active_filter_color)
+        val inactiveColor = ContextCompat.getColor(requireContext(), R.color.unselected_item_color)
+
+        buttons.forEach { (filter, button) ->
+            button.setCardBackgroundColor(if (filter == activeFilter) activeColor else inactiveColor)
+        }
+    }
+
+
+    /**
+     * Generic function to set up the bar chart's appearance.
      */
     private fun setupBarChart() {
-        val barChart: BarChart = binding.barChart
-
-        val entries = listOf(
-            BarEntry(0f, 100f),
-            BarEntry(1f, 150f),
-            BarEntry(2f, 125f),
-            BarEntry(3f, 180f)
-        )
-
-        val dataSet = BarDataSet(entries, "Stock Levels")
-        dataSet.colors = listOf(
-            Color.parseColor("#004c91"),
-            Color.parseColor("#00c3ff"),
-            Color.parseColor("#4a90e2"),
-            Color.parseColor("#0071bc")
-        )
-        dataSet.valueTextColor = Color.parseColor("#0071c1")
-        dataSet.valueTextSize = 14f
-
-        val barData = BarData(dataSet)
-        barChart.data = barData
-
-        val labels = listOf("Yoyo", "Castle Lite", "Monarch", "Simba")
-        barChart.xAxis.valueFormatter = IndexAxisValueFormatter(labels)
-        barChart.xAxis.granularity = 1f
-        barChart.xAxis.position = XAxis.XAxisPosition.BOTTOM
-        barChart.xAxis.setDrawGridLines(false)
-
-        barChart.axisLeft.setDrawGridLines(false)
-        barChart.axisRight.isEnabled = false
-        barChart.description.isEnabled = false
-        barChart.legend.isEnabled = false
-        barChart.animateY(1000)
+        binding.barChart.apply {
+            axisRight.isEnabled = false
+            axisLeft.setDrawGridLines(false)
+            xAxis.setDrawGridLines(false)
+            xAxis.position = XAxis.XAxisPosition.BOTTOM
+            xAxis.granularity = 1f
+            description.isEnabled = false
+            legend.isEnabled = false
+            animateY(1000)
+        }
     }
+
+    /**
+     * Updates the BarChart with new data and labels.
+     */
+    private fun updateBarChart(entries: List<BarEntry>, labels: List<String>, dataLabel: String) {
+        if (entries.isEmpty()) {
+            binding.barChart.clear()
+            binding.barChart.invalidate()
+            return
+        }
+
+        val dataSet = BarDataSet(entries, dataLabel).apply {
+            colors = listOf(
+                Color.parseColor("#004c91"),
+                Color.parseColor("#00c3ff"),
+                Color.parseColor("#4a90e2"),
+                Color.parseColor("#0071bc")
+            )
+            valueTextColor = Color.parseColor("#0071c1")
+            valueTextSize = 12f
+        }
+
+        binding.barChart.data = BarData(dataSet)
+        binding.barChart.xAxis.valueFormatter = IndexAxisValueFormatter(labels)
+        binding.barChart.invalidate() // Refresh the chart
+    }
+
+    // ✅ --- END: CHART AND SALES DATA LOGIC ---
+
+
+    // --- Google Sheets Helper Functions ---
+    private suspend fun getSheetsService(account: GoogleSignInAccount): Sheets {
+        val credential = GoogleAccountCredential.usingOAuth2(requireContext(), listOf(SheetsScopes.SPREADSHEETS_READONLY))
+            .setSelectedAccount(account.account)
+        return Sheets.Builder(
+            GoogleNetHttpTransport.newTrustedTransport(),
+            GsonFactory.getDefaultInstance(),
+            credential
+        ).setApplicationName(getString(R.string.app_name)).build()
+    }
+
+    private suspend fun getDriveService(account: GoogleSignInAccount): Drive {
+        val credential = GoogleAccountCredential.usingOAuth2(requireContext(), listOf(DriveScopes.DRIVE_READONLY))
+            .setSelectedAccount(account.account)
+        return Drive.Builder(
+            GoogleNetHttpTransport.newTrustedTransport(),
+            GsonFactory.getDefaultInstance(),
+            credential
+        ).setApplicationName(getString(R.string.app_name)).build()
+    }
+
+    private suspend fun findSheetIdByName(driveService: Drive, name: String): String? = withContext(Dispatchers.IO) {
+        val query = "name='$name' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"
+        val result = driveService.files().list().setQ(query).setSpaces("drive").setFields("files(id)").execute()
+        result.files.firstOrNull()?.id
+    }
+
 
     override fun onDestroyView() {
         super.onDestroyView()

@@ -19,6 +19,7 @@ import android.widget.LinearLayout
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import androidx.annotation.Keep
 import androidx.appcompat.app.AlertDialog
 import androidx.cardview.widget.CardView
 import androidx.fragment.app.activityViewModels
@@ -34,13 +35,21 @@ import com.google.api.services.drive.DriveScopes
 import com.google.api.services.sheets.v4.Sheets
 import com.google.api.services.sheets.v4.SheetsScopes
 import com.google.api.services.sheets.v4.model.*
-import com.example.zed.MyBottomStockSheet.UnitOfMeasureItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.Comparator
+
+
+// Helper class for the spinner
+data class UnitOfMeasureItem(val description: String, val value: Int) {
+    override fun toString(): String = description
+}
+// ✅ --- END: DATA CLASS DEFINITIONS ---
+
 
 class location_and_uom : Fragment() {
 
@@ -64,6 +73,7 @@ class location_and_uom : Fragment() {
     private lateinit var btnAddUnit: CardView
     private val dynamicUnitsOfMeasure = mutableListOf<UnitOfMeasureItem>()
     private lateinit var uomAdapter: ArrayAdapter<UnitOfMeasureItem>
+
     private lateinit var locationContainer: LinearLayout
     private lateinit var location_add: CardView
     private lateinit var locationCounterTextView: TextView
@@ -73,9 +83,9 @@ class location_and_uom : Fragment() {
     private val occupiedLocationIds = mutableSetOf<String>()
     private val newlySelectedLocationIds = mutableSetOf<String>()
     private lateinit var btnSaveChanges: CardView
+    private lateinit var deleteProduct: CardView // View for the delete button
     private var pendingProductData: SelectedProductData? = null
     private var isDynamicDataLoaded = false
-
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -89,6 +99,88 @@ class location_and_uom : Fragment() {
         fetchDynamicData()
         return view
     }
+
+    // ✅ --- START: DELETE PRODUCT LOGIC ---
+
+    /**
+     * Shows a confirmation dialog before proceeding with deletion.
+     */
+    private fun confirmAndDeleteProduct() {
+        val currentProductData = sharedViewModel.selectedProductData.value ?: return
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Delete Product")
+            .setMessage("Are you sure you want to permanently delete '${currentProductData.product.name}'? This will also remove all its units of measure. This action cannot be undone.")
+            .setPositiveButton("Delete") { _, _ ->
+                handleDeleteProduct(currentProductData)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /**
+     * Handles the actual deletion from Google Sheets.
+     */
+    private fun handleDeleteProduct(productToDelete: SelectedProductData) {
+        progressDialog.setMessage("Deleting product...")
+        progressDialog.show()
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val account = GoogleSignIn.getLastSignedInAccount(requireContext())
+                    ?: throw IllegalStateException("User not signed in.")
+                val sheetsService = getSheetsService(account)
+                val spreadsheetId = findSheetIdByName(getDriveService(account), SPREADSHEET_NAME)
+                    ?: throw IllegalStateException("Spreadsheet not found.")
+
+                // 1. Delete all associated Units of Measure
+                withContext(Dispatchers.Main) {
+                    progressDialog.setMessage("Deleting units of measure...")
+                }
+                deleteAllUomsForProduct(sheetsService, spreadsheetId, productToDelete.product.barcode)
+
+                // 2. Delete the product itself from the Products sheet
+                withContext(Dispatchers.Main) {
+                    progressDialog.setMessage("Deleting main product entry...")
+                }
+                val productRowIndex = findProductRowIndex(sheetsService, spreadsheetId, productToDelete.product.id)
+                if (productRowIndex != -1) {
+                    val productsSheetId = getSheetId(sheetsService, spreadsheetId, SHEET_PRODUCTS)
+                        ?: throw IllegalStateException("Could not find sheet ID for '$SHEET_PRODUCTS'")
+
+                    val deleteRequest = Request().setDeleteDimension(
+                        DeleteDimensionRequest().setRange(
+                            DimensionRange()
+                                .setSheetId(productsSheetId)
+                                .setDimension("ROWS")
+                                .setStartIndex(productRowIndex - 1) // Adjust for 0-based index
+                                .setEndIndex(productRowIndex)
+                        )
+                    )
+
+                    val batchUpdateRequest = BatchUpdateSpreadsheetRequest().setRequests(listOf(deleteRequest))
+                    sheetsService.spreadsheets().batchUpdate(spreadsheetId, batchUpdateRequest).execute()
+                }
+
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    Toast.makeText(requireContext(), "'${productToDelete.product.name}' was deleted.", Toast.LENGTH_LONG).show()
+                    // Clear the UI and the ViewModel selection
+                    sharedViewModel.clearSelection()
+                    clearAllViews()
+                }
+
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    progressDialog.dismiss()
+                    Log.e(TAG, "Error during handleDeleteProduct", e)
+                    Toast.makeText(requireContext(), "Error deleting product: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    // ✅ --- END: DELETE PRODUCT LOGIC ---
 
     private fun handleSaveChanges() {
         val currentProductData = sharedViewModel.selectedProductData.value ?: run {
@@ -122,7 +214,8 @@ class location_and_uom : Fragment() {
                     val newImageUri = Uri.parse(currentImageUrl)
 
                     val originalData = sharedViewModel.selectedProductData.value
-                    val oldImageDriveUrl = originalData?.product?.unit // Assuming old URL was stashed here
+                    // Correctly read from the stashed field
+                    val oldImageDriveUrl = originalData?.product?.stashedImageUrl
 
                     if (!oldImageDriveUrl.isNullOrBlank() && oldImageDriveUrl.startsWith("https://")) {
                         deleteImageFromDrive(driveService, oldImageDriveUrl)
@@ -195,18 +288,23 @@ class location_and_uom : Fragment() {
                 val mediaContent = FileContent("image/jpeg", tempFile)
 
                 Log.d(TAG, "Uploading new image to Google Drive...")
+                // We only need the 'id' field now
                 val file = driveService.files().create(fileMetadata, mediaContent)
-                    .setFields("id, webViewLink")
+                    .setFields("id")
                     .execute()
 
                 val permission = com.google.api.services.drive.model.Permission()
                     .setType("anyone")
                     .setRole("reader")
                 driveService.permissions().create(file.id, permission).execute()
-                Log.d(TAG, "Image uploaded. New Link: ${file.webViewLink}")
+
+                // Construct the direct download URL instead of using webViewLink
+                val directImageUrl = "https://drive.google.com/uc?id=${file.id}"
+                Log.d(TAG, "Image uploaded. New Direct Link: $directImageUrl")
 
                 tempFile.delete() // Clean up temporary file
-                return@withContext file.webViewLink
+                return@withContext directImageUrl // Return the correct URL
+
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to upload image", e)
                 return@withContext null
@@ -217,7 +315,13 @@ class location_and_uom : Fragment() {
     private suspend fun deleteImageFromDrive(driveService: Drive, fileUrl: String) {
         withContext(Dispatchers.IO) {
             try {
-                val fileId = fileUrl.substringAfter("/d/").substringBefore("/")
+                // Handle both direct link and web view link formats
+                val fileId = if (fileUrl.contains("uc?id=")) {
+                    fileUrl.substringAfter("uc?id=")
+                } else {
+                    fileUrl.substringAfter("/d/").substringBefore("/")
+                }
+
                 if (fileId.isNotBlank()) {
                     Log.d(TAG, "Deleting old image from Drive. File ID: $fileId")
                     driveService.files().delete(fileId).execute()
@@ -239,7 +343,8 @@ class location_and_uom : Fragment() {
         btnAddUnit = view.findViewById(R.id.btnAddUnit)
         qty = view.findViewById(R.id.cost_price)
         quantity_display = view.findViewById(R.id.quantity_display)
-        btnSaveChanges = view.findViewById(R.id.btnSaveChanges) // Correct ID
+        btnSaveChanges = view.findViewById(R.id.btnSaveChanges)
+        deleteProduct = view.findViewById(R.id.deleteProduct) // ✅ Initialize the delete button
 
         locationCounterTextView.text = "0"
         unitCounterTextView.text = "0"
@@ -248,38 +353,16 @@ class location_and_uom : Fragment() {
         }
     }
 
-    // ✅ STEP 1: CORRECTED observeViewModel
     private fun observeViewModel() {
         sharedViewModel.selectedProductData.observe(viewLifecycleOwner) { data ->
-            // 1. Just store the data.
             pendingProductData = data
-            // 2. Attempt to populate the UI. This function will now internally
-            //    check if the dynamic data is also ready.
             tryPopulateUi()
         }
     }
 
-    // This function is now just a simple bridge
-    private fun updateUiFromData(data: SelectedProductData?) {
-        if (data != null) {
-            populateUiWithData(data)
-        } else {
-            clearAllViews()
-        }
-    }
-
-    // ✅ STEP 3: ADD THE NEW "GATEKEEPER" FUNCTION
     private fun tryPopulateUi() {
-        // This is the gatekeeper. It only proceeds if BOTH the dynamic data is loaded
-        // AND the pending product data has been received and is not null.
         if (isDynamicDataLoaded && pendingProductData != null) {
-            // We have a non-null value for pendingProductData, so we can safely pass it.
-            // The !! is safe here because of the check above.
             populateUiWithData(pendingProductData!!)
-
-            // Crucially, reset pendingProductData to null after using it.
-            // This prevents the UI from incorrectly re-populating if the user
-            // navigates away and comes back, causing the observer to fire again.
             pendingProductData = null
         }
     }
@@ -317,18 +400,14 @@ class location_and_uom : Fragment() {
         dynamicUnitsOfMeasure.addAll(spinnerItems)
         uomAdapter.notifyDataSetChanged()
 
-        // ✅ --- THIS IS THE NEW LOGIC ---
         // Find the unit of measure with the smallest quantity.
         val itemWithLowestQty = dynamicUnitsOfMeasure.minByOrNull { it.value }
         if (itemWithLowestQty != null) {
-            // Find the index of that item in the adapter's list.
             val positionToSelect = dynamicUnitsOfMeasure.indexOf(itemWithLowestQty)
             if (positionToSelect != -1) {
-                // Set the spinner to that position.
                 unit_of_measure_populates.setSelection(positionToSelect)
             }
         }
-        // --- END OF NEW LOGIC ---
 
         qty.setText(data.product.caseQty)
         updateTotalCalculation()
@@ -364,6 +443,7 @@ class location_and_uom : Fragment() {
             }
         }
         btnSaveChanges.setOnClickListener { handleSaveChanges() }
+        deleteProduct.setOnClickListener { confirmAndDeleteProduct() } // ✅ Set the listener for delete
     }
 
     private val mainCalculationWatcher: TextWatcher = object : TextWatcher {
@@ -402,6 +482,7 @@ class location_and_uom : Fragment() {
                     if (!oldDescription.isNullOrEmpty() && oldDescription != newDescription) {
                         dynamicUnitsOfMeasure.removeAll { it.description == oldDescription }
                     }
+
                     val existingItem = dynamicUnitsOfMeasure.find { it.description == newDescription }
                     if (existingItem != null) {
                         dynamicUnitsOfMeasure[dynamicUnitsOfMeasure.indexOf(existingItem)] = UnitOfMeasureItem(newDescription, unitsInCase)
@@ -450,7 +531,7 @@ class location_and_uom : Fragment() {
         rackAdapter.setDropDownViewResource(R.layout.spinner_item)
         shelfAdapter.setDropDownViewResource(R.layout.spinner_item)
 
-        // --- Validation and Listener Helpers (These are fine and remain unchanged) ---
+        // --- Validation and Listener Helpers ---
         val checkLocationAvailability = {
             aisleSpinner.setBackgroundResource(R.drawable.spinner_border)
             rackSpinner.setBackgroundResource(if (rackSpinner.isEnabled) R.drawable.spinner_border else R.drawable.spinner_border_disabled)
@@ -476,7 +557,7 @@ class location_and_uom : Fragment() {
         fun updateRackSpinner(selectedAislePosition: Int) {
             if (selectedAislePosition > 0) {
                 rackSpinner.isEnabled = true
-                rackSpinner.adapter = rackAdapter // This is fine for user interaction
+                rackSpinner.adapter = rackAdapter
             } else {
                 rackSpinner.isEnabled = false
                 shelfSpinner.isEnabled = false
@@ -487,7 +568,7 @@ class location_and_uom : Fragment() {
         fun updateShelfSpinner(selectedRackPosition: Int) {
             if (selectedRackPosition > 0) {
                 shelfSpinner.isEnabled = true
-                shelfSpinner.adapter = shelfAdapter // This is fine for user interaction
+                shelfSpinner.adapter = shelfAdapter
             } else {
                 shelfSpinner.isEnabled = false
                 shelfSpinner.adapter = ArrayAdapter(requireContext(), R.layout.spinner_item, listOf("Select Rack First"))
@@ -521,72 +602,49 @@ class location_and_uom : Fragment() {
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
 
-        // ✅ --- START: FINAL, DIRECT POPULATION LOGIC ---
+        // --- Population Logic ---
         location?.let { loc ->
             val logTag = "SpinnerPopulation"
             Log.d(logTag, "--- STARTING POPULATION FOR '${loc.aisle}', '${loc.rack}', '${loc.shelf}' ---")
-
-            // Trim all incoming data to remove whitespace
             val aisleToFind = loc.aisle.trim()
             val rackToFind = loc.rack.trim()
             val shelfToFind = loc.shelf.trim()
-
-            // Find positions by comparing trimmed strings
             val aislePos = aislesWithPlaceholder.indexOfFirst { it.trim().equals(aisleToFind, ignoreCase = true) }
             val rackPos = racksWithPlaceholder.indexOfFirst { it.trim().equals(rackToFind, ignoreCase = true) }
             val shelfPos = shelvesWithPlaceholder.indexOfFirst { it.trim().equals(shelfToFind, ignoreCase = true) }
-
             Log.d(logTag, "Searching for Aisle: '$aisleToFind'. Found at position: $aislePos")
             Log.d(logTag, "Searching for Rack: '$rackToFind'. Found at position: $rackPos")
             Log.d(logTag, "Searching for Shelf: '$shelfToFind'. Found at position: $shelfPos")
-
-            // Only proceed if ALL THREE locations are found in their respective lists
             if (aislePos > 0 && rackPos > 0 && shelfPos > 0) {
                 Log.d(logTag, "All positions are valid. Preparing to set spinners.")
-
-                // Temporarily disable the listeners to prevent them from interfering
                 val aisleOriginalListener = aisleSpinner.onItemSelectedListener
                 val rackOriginalListener = rackSpinner.onItemSelectedListener
                 val shelfOriginalListener = shelfSpinner.onItemSelectedListener
                 aisleSpinner.onItemSelectedListener = null
                 rackSpinner.onItemSelectedListener = null
                 shelfSpinner.onItemSelectedListener = null
-
-                // STEP 1: Set the REAL adapters and enable the spinners immediately.
-                // This is the crucial fix for the adapter issue.
                 rackSpinner.adapter = rackAdapter
                 shelfSpinner.adapter = shelfAdapter
                 rackSpinner.isEnabled = true
                 shelfSpinner.isEnabled = true
-
-                // STEP 2: Post the selection to the UI thread. This runs after the UI
-                // has processed the adapter changes from Step 1.
                 locationView.post {
                     Log.d(logTag, "UI is ready. Setting selections now.")
-
                     aisleSpinner.setSelection(aislePos, false)
                     rackSpinner.setSelection(rackPos, false)
                     shelfSpinner.setSelection(shelfPos, false)
-
                     Log.d(logTag, "--- POPULATION COMPLETE ---")
-
-                    // Restore the listeners for user interaction
                     aisleSpinner.onItemSelectedListener = aisleOriginalListener
                     rackSpinner.onItemSelectedListener = rackOriginalListener
                     shelfSpinner.onItemSelectedListener = shelfOriginalListener
                     Log.d(logTag, "Listeners restored.")
                 }
             } else {
-                // This will clearly log which part failed
                 Log.e(logTag, "ERROR: One or more positions were not found. Halting population.")
                 if (aislePos <= 0) Log.e(logTag, "-> Aisle '${aisleToFind}' NOT FOUND in adapter list.")
                 if (rackPos <= 0) Log.e(logTag, "-> Rack '${rackToFind}' NOT FOUND in adapter list.")
                 if (shelfPos <= 0) Log.e(logTag, "-> Shelf '${shelfToFind}' NOT FOUND in adapter list.")
             }
         }
-        // ✅ --- END: FINAL LOGIC ---
-
-
 
         // --- Add/Remove Listeners ---
         btnAddAisle.setOnClickListener { showAddItemDialog("Add New Aisle", aisleAdapter, aisleSpinner) }
@@ -633,6 +691,7 @@ class location_and_uom : Fragment() {
         Log.d(TAG, "Final list of location IDs to be saved: $distinctFinalIds")
         return distinctFinalIds
     }
+
     private suspend fun gatherFinalUomDataFromUi(): List<Map<String, String>> {
         val allUnits = mutableListOf<Map<String, String>>()
         withContext(Dispatchers.Main) {
@@ -662,6 +721,7 @@ class location_and_uom : Fragment() {
         if (allUnits.isEmpty()) { Log.d(TAG, "No valid UOMs were found in the UI to save.") }
         return allUnits
     }
+
     private fun getNewLocationDataFromUi(): List<Map<String, String>> {
         val newLocations = mutableListOf<Map<String, String>>()
         for (i in 0 until locationContainer.childCount) {
@@ -678,6 +738,7 @@ class location_and_uom : Fragment() {
         }
         return newLocations
     }
+
     private suspend fun addNewLocationsToSheet(sheetsService: Sheets, spreadsheetId: String, locations: List<Map<String, String>>, account: GoogleSignInAccount): List<String> {
         if (locations.isEmpty()) {
             Log.d(TAG, "addNewLocationsToSheet: No new locations to add. Skipping append.")
@@ -697,6 +758,7 @@ class location_and_uom : Fragment() {
         sheetsService.spreadsheets().values().append(spreadsheetId, "$SHEET_LOCATIONS!A1", body).setValueInputOption("USER_ENTERED").execute()
         return newLocationIds
     }
+
     private suspend fun deleteAllUomsForProduct(sheetsService: Sheets, spreadsheetId: String, productBarcode: String) {
         Log.d(TAG, "Attempting to delete all existing UOMs for barcode: $productBarcode")
         val sheetId = getSheetId(sheetsService, spreadsheetId, SHEET_UNITS) ?: throw IllegalStateException("Could not find sheet ID for '$SHEET_UNITS'")
@@ -721,6 +783,7 @@ class location_and_uom : Fragment() {
             Log.d(TAG, "No existing UOMs found for barcode $productBarcode to delete.")
         }
     }
+
     private suspend fun addNewUnitsToSheet(sheetsService: Sheets, spreadsheetId: String, units: List<Map<String, String>>, mainBarcode: String, account: GoogleSignInAccount) {
         if (units.isEmpty()) {
             Log.d(TAG, "addNewUnitsToSheet: No new units to add. Skipping append.")
@@ -731,17 +794,19 @@ class location_and_uom : Fragment() {
         val body = ValueRange().setValues(unitRows)
         sheetsService.spreadsheets().values().append(spreadsheetId, "$SHEET_UNITS!A1", body).setValueInputOption("USER_ENTERED").execute()
     }
+
     private suspend fun findProductRowIndex(sheetsService: Sheets, spreadsheetId: String, productId: String): Int {
         val range = "$SHEET_PRODUCTS!A:A"
         val response = sheetsService.spreadsheets().values().get(spreadsheetId, range).execute()
         val values = response.getValues() ?: return -1
-        for ((index, row) in values.drop(1).withIndex()) {
+        for ((index, row) in values.withIndex()) { // No drop(1)
             if (row.isNotEmpty() && row[0].toString() == productId) {
-                return index + 2
+                return index + 1 // Return 1-based index for sheet operations
             }
         }
         return -1
     }
+
     private suspend fun getSheetId(sheetsService: Sheets, spreadsheetId: String, sheetName: String): Int? {
         return withContext(Dispatchers.IO) {
             try {
@@ -754,7 +819,6 @@ class location_and_uom : Fragment() {
         }
     }
 
-    // ✅ STEP 2: CORRECTED fetchDynamicData
     private fun fetchDynamicData() {
         progressDialog.setMessage("Loading available locations...")
         progressDialog.show()
@@ -788,11 +852,7 @@ class location_and_uom : Fragment() {
                     dynamicShelves.clear(); dynamicShelves.addAll(shelvesFromSheet.sorted())
                     locationNameToIdMap.clear(); locationNameToIdMap.putAll(tempLocationMap)
                     progressDialog.dismiss()
-
-                    // 1. Just announce that the data is ready.
                     isDynamicDataLoaded = true
-                    // 2. Attempt to populate the UI. This function will now internally
-                    //    check if the product data has also arrived.
                     tryPopulateUi()
                 }
             } catch (e: Exception) {
@@ -840,19 +900,23 @@ class location_and_uom : Fragment() {
             dialog.dismiss()
         }
     }
+
     private fun getCurrentTimestamp(): String = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+
     private fun getSheetsService(account: GoogleSignInAccount): Sheets {
         val credential = GoogleAccountCredential.usingOAuth2(requireContext(), listOf(SheetsScopes.SPREADSHEETS, DriveScopes.DRIVE_FILE))
             .apply { selectedAccountName = account.email }
         return Sheets.Builder(GoogleNetHttpTransport.newTrustedTransport(), GsonFactory.getDefaultInstance(), credential)
             .setApplicationName("Nia Bridge App").build()
     }
+
     private fun getDriveService(account: GoogleSignInAccount): Drive {
         val credential = GoogleAccountCredential.usingOAuth2(requireContext(), listOf(DriveScopes.DRIVE, DriveScopes.DRIVE_FILE))
             .apply { selectedAccountName = account.email }
         return Drive.Builder(GoogleNetHttpTransport.newTrustedTransport(), GsonFactory.getDefaultInstance(), credential)
             .setApplicationName("Nia Bridge App").build()
     }
+
     private suspend fun findSheetIdByName(driveService: Drive, name: String): String? = withContext(Dispatchers.IO) {
         val query = "name='$name' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false"
         val result = driveService.files().list().setQ(query).setSpaces("drive").setCorpus("user")

@@ -15,60 +15,88 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_margin="16dp"
-            app:layout_constraintBottom_toTopOf="@+id/imageView7"
+            android:layout_marginBottom="16dp"
+            app:layout_constraintBottom_toTopOf="@+id/chart_filters"
             app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="1.0"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@+id/location_uom" />
 
-        <ImageView
-            android:id="@+id/imageView7"
-            android:layout_width="35dp"
-            android:layout_height="35dp"
-            android:layout_marginBottom="45dp"
+        <LinearLayout
+            android:id="@+id/chart_filters"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:gravity="center"
+            android:orientation="horizontal"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:srcCompat="@drawable/logo" />
+            app:layout_constraintStart_toStartOf="parent">
 
-        <TextView
-            android:id="@+id/textView28"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="52dp"
-            android:layout_marginBottom="28dp"
-            android:text="-BRIDGE"
-            android:textColor="#2ac5ff"
-            android:textSize="9.5sp"
-            android:textStyle="bold"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintHorizontal_bias="0.514"
-            app:layout_constraintStart_toStartOf="parent" />
+            <androidx.cardview.widget.CardView
+                android:id="@+id/daily"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                app:cardBackgroundColor="@color/active_filter_color"
+                app:cardCornerRadius="8dp">
 
-        <TextView
-            android:id="@+id/textView29"
-            android:layout_width="wrap_content"
-            android:layout_height="17dp"
-            android:layout_marginStart="2dp"
-            android:text="ZAMBIA LTD"
-            android:textColor="#0071c1"
-            android:textSize="9.5sp"
-            android:textStyle="bold"
-            app:layout_constraintStart_toEndOf="@+id/textView28"
-            app:layout_constraintTop_toTopOf="@+id/textView28" />
-        <TextView
-            android:id="@+id/textView4"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="2dp"
-            android:text="NIA"
-            android:textAlignment="center"
-            android:textColor="#0071c1"
-            android:textSize="9.5sp"
-            android:textStyle="bold"
-            app:layout_constraintBottom_toBottomOf="@+id/textView28"
-            app:layout_constraintEnd_toStartOf="@+id/textView28"
-            app:layout_constraintTop_toTopOf="@+id/textView28" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:padding="8dp"
+                    android:text="Daily"
+                    android:textColor="@color/white" />
+            </androidx.cardview.widget.CardView>
+
+            <androidx.cardview.widget.CardView
+                android:id="@+id/weekly"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                app:cardBackgroundColor="@color/unselected_item_color"
+                app:cardCornerRadius="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:padding="8dp"
+                    android:text="Weekly"
+                    android:textColor="@color/white" />
+            </androidx.cardview.widget.CardView>
+
+            <androidx.cardview.widget.CardView
+                android:id="@+id/monthly"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="8dp"
+                app:cardBackgroundColor="@color/unselected_item_color"
+                app:cardCornerRadius="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:padding="8dp"
+                    android:text="Monthly"
+                    android:textColor="@color/white" />
+            </androidx.cardview.widget.CardView>
+
+            <androidx.cardview.widget.CardView
+                android:id="@+id/yearly"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="@color/unselected_item_color"
+                app:cardCornerRadius="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:padding="8dp"
+                    android:text="Yearly"
+                    android:textColor="@color/white" />
+            </androidx.cardview.widget.CardView>
+
+        </LinearLayout>
 
         <ImageView
             android:id="@+id/stockImage"

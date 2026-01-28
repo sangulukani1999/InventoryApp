@@ -15,7 +15,9 @@ data class Product(
     val minOrder: String,
     val unitCost: String,
     val locationIds: List<String>,
-    val expiryDate: String?
+    val expiryDate: String?,
+
+    @Transient val stashedImageUrl: String? = null // This is the field causing the error if not defined
 )
 
 data class Location(
