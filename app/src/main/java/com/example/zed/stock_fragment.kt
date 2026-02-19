@@ -38,7 +38,7 @@ import com.example.zed.Location
 import com.example.zed.UnitOfMeasure
 import com.example.zed.CommitItem // ✅ Import CommitItem
 
-class stock_fragment : Fragment() {
+class stock_fragment : Fragment(), RefreshableFragment {
     private var _binding: ActivityStockFragmentBinding? = null
     private val binding get() = _binding!!
 
@@ -49,6 +49,9 @@ class stock_fragment : Fragment() {
     private val currentlyDisplayedProducts = mutableListOf<Product>()
     private var recyclerViewAdapter: stockListAdaptor? = null
 
+    override fun refreshData() {
+        fetchInventoryData()
+    }
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?

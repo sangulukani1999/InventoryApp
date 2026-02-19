@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.Toast.makeText
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SearchView
 import androidx.core.graphics.values
@@ -60,14 +61,59 @@ class stockList : AppCompatActivity() {
             insets
         }
 
-        binding.backBtnPhysicalInventory.setOnClickListener {
-            startActivity(Intent(this, PhysicalInventory::class.java))
-            finish()
-        }
-
         setupTabs()
         setupSearchView()
         fetchProductsForSearch()
+        setupClickListeners()
+    }
+
+    private fun setupClickListeners() {
+        binding.backBtnPhysicalInventory.setOnClickListener {
+            finish()
+        }
+        binding.reloadBtn.setOnClickListener {
+            // 1. Get the current fragment from your ViewPager2's adapter
+            val currentFragment = stockPagerAdapter.getFragment(binding.tabContent.currentItem)
+
+            // 2. Check if that fragment is a RefreshableFragment
+            if (currentFragment is RefreshableFragment) {
+                // 3. If it is, call its refreshData() method
+                Toast.makeText(this, "Refreshing data...", Toast.LENGTH_SHORT).show()
+                currentFragment.refreshData()
+            } else {
+                // Fallback in case the fragment isn't refreshable or not found
+                Toast.makeText(this, "This view cannot be refreshed.", Toast.LENGTH_SHORT).show()
+            }
+        }
+        binding.barcodeScanner3.setOnClickListener {
+            val scannerDialog = BarcodeScannerDialogFragment { scannedBarcode ->
+                // ✅ Use the highlighting function instead of navigating
+                findAndHighlightProduct(scannedBarcode)
+            }
+            scannerDialog.show(supportFragmentManager, "StockTakingScannerDialog")
+        }
+    }
+
+    private fun validateBarcodeAndNavigate(barcode: String) {
+        if (barcode.isBlank()) {
+            makeText(this, "Scanned an empty barcode.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val productExists = allProductsForSearch.any { it.barcode.trim() == barcode.trim() }
+        if (productExists) {
+            makeText(this, "Product found. Loading details...", Toast.LENGTH_SHORT).show()
+            val intent = Intent(this, InventoryItemDetails::class.java).apply {
+                putExtra("inventoryBarcodes", barcode)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+            startActivity(intent)
+        } else {
+            AlertDialog.Builder(this)
+                .setTitle("Not Found")
+                .setMessage("Product with barcode '$barcode' was not found.")
+                .setPositiveButton("OK", null)
+                .show()
+        }
     }
 
     private fun setupSearchView() {

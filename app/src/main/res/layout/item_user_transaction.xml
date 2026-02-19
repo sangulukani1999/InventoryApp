@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Make the root a LinearLayout that can contain the collapsible part -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:animateLayoutChanges="true"
+    android:background="#f8f8f8"
+    android:orientation="vertical">
+
+    <!-- This LinearLayout contains the clickable content -->
+    <LinearLayout
+        android:id="@+id/clickableTransactionHeader"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="8dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="8dp"
+        android:paddingBottom="10dp">
+
+        <!-- Date Section on the Left -->
+        <TextView
+            android:id="@+id/transactionDateTextView"
+            android:layout_width="80dp"
+            android:layout_height="wrap_content"
+            android:textColor="@android:color/black"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            tools:text="May 21" />
+
+        <!-- Details Section on the Right -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <!-- Time In Details -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Time In:"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/timeInActualTextView"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:textSize="12sp"
+                    tools:text="07:00hrs" />
+
+                <TextView
+                    android:id="@+id/timeInSupposedTextView"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:textColor="@color/variance_negative"
+                    android:textSize="11sp"
+                    tools:text="(instead: 06:00)" />
+            </LinearLayout>
+
+            <!-- Time Out Details -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Time Out:"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/timeOutActualTextView"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:textSize="12sp"
+                    tools:text="17:05hrs" />
+
+                <TextView
+                    android:id="@+id/timeOutSupposedTextView"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:textColor="@color/variance_positive"
+                    android:textSize="11sp"
+                    tools:text="(expected: 17:00)" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- ✅ THIS IS THE COLLAPSIBLE RECYCLERVIEW FOR REVIEWS -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/managerReviewsRecyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="80dp"
+        android:layout_marginEnd="8dp"
+        android:layout_marginBottom="8dp"
+        android:orientation="vertical"
+        android:visibility="gone"
+        app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+        tools:itemCount="2"
+        tools:listitem="@layout/item_manager_review"
+        tools:visibility="visible" />
+
+</LinearLayout>

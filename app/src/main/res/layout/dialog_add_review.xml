@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Add a Review"
+            android:textColor="@android:color/black"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Status"
+            android:textStyle="bold" />
+
+        <RadioGroup
+            android:id="@+id/reviewStatusRadioGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="vertical">
+
+            <RadioButton
+                android:id="@+id/radioVeryGood"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Very Good" />
+
+            <RadioButton
+                android:id="@+id/radioGood"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Good" />
+
+            <RadioButton
+                android:id="@+id/radioBad"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Bad" />
+        </RadioGroup>
+
+        <!-- ✅ START: Supposed Time In/Out Section -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.textfield.TextInputLayout
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Supposed Time In">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/supposedTimeInEditText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:clickable="true"
+                    android:text="07:30"/>
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <com.google.android.material.textfield.TextInputLayout
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:hint="Supposed Time Out">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/supposedTimeOutEditText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:focusable="false"
+                    android:clickable="true"
+                    android:text="20:30"/>
+            </com.google.android.material.textfield.TextInputLayout>
+        </LinearLayout>
+        <!-- ✅ END: Supposed Time In/Out Section -->
+
+
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:hint="Comment">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/commentEditText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="top"
+                android:minLines="3" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+    </LinearLayout>
+</ScrollView>

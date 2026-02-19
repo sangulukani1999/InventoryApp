@@ -49,6 +49,7 @@ class MyBottomStockSheet(
         private const val SHEET_UNITS = "unit_measure"
         private const val SHEET_LOCATIONS = "product_location"
         private const val SHEET_CATEGORY = "category"
+        private const val SHEET_COUNT_DATA = "countData"
     }
 
     // --- UI Views ---
@@ -230,6 +231,8 @@ class MyBottomStockSheet(
         // --- END OF ADDITION ---
     }
 
+    // In class MyBottomStockSheet...
+
     private fun fetchDynamicData() {
         progressDialog.setMessage("Loading dynamic data...")
         progressDialog.show()
@@ -237,9 +240,25 @@ class MyBottomStockSheet(
             try {
                 val account = GoogleSignIn.getLastSignedInAccount(requireContext())
                     ?: throw IllegalStateException("User not signed in")
+                // Get a service that can write, in case we need to create sheets
                 val sheetsService = getSheetsService(account)
                 val spreadsheetId = findSheetIdByName(getDriveService(account), SPREADSHEET_NAME)
                     ?: throw IllegalStateException("Spreadsheet not found")
+
+                // ✅ THIS IS THE FIX: Ensure all required sheets exist with correct headers before fetching data.
+                checkAndCreateSheetWithHeaders(
+                    sheetsService, spreadsheetId, SHEET_CATEGORY,
+                    listOf("Category_ID", "Category Name", "Created By", "Timestamp")
+                )
+                checkAndCreateSheetWithHeaders(
+                    sheetsService, spreadsheetId, SHEET_COUNT_DATA,
+                    listOf("Timestamp", "Barcode", "Product Name", "Location ID", "Quantity", "User")
+                )
+                checkAndCreateSheetWithHeaders(
+                    sheetsService, spreadsheetId, SHEET_TAB_NAME,
+                    listOf("Product ID", "Product Name", "Images", "Barcode", "Category_ID", "Unit", "Case Quantity", "Minimum Order", "Unit Cost", "Location_IDs", "Updated by", "Timestamp", "expiry date")
+                )
+                // End of fix section
 
                 // Fetch Categories
                 val categoryRange = "'$SHEET_CATEGORY'!A2:B"
@@ -269,8 +288,8 @@ class MyBottomStockSheet(
                     }
                 }
 
-                // Fetch occupied location IDs from Products sheet
-                val productsLocationRange = "'$SHEET_TAB_NAME'!I2:I" // Column I for Location_IDs
+                // Fetch occupied location IDs from Products sheet (Column J is now Location_IDs)
+                val productsLocationRange = "'$SHEET_TAB_NAME'!J2:J"
                 val productsResponse = sheetsService.spreadsheets().values().get(spreadsheetId, productsLocationRange).execute()
                 val usedIds = productsResponse.getValues()?.flatMap { row ->
                     val rawString = row.getOrNull(0)?.toString() ?: "[]"
@@ -278,33 +297,20 @@ class MyBottomStockSheet(
                 } ?: emptyList()
 
                 // Fetch existing barcodes from Products sheet
-                val barcodeRange = "'$SHEET_TAB_NAME'!D2:D" // Column D for Barcode
+                val barcodeRange = "'$SHEET_TAB_NAME'!D2:D"
                 val barcodeResponse = sheetsService.spreadsheets().values().get(spreadsheetId, barcodeRange).execute()
                 val barcodesFromSheet = barcodeResponse.getValues()?.mapNotNull { row ->
                     row.getOrNull(0)?.toString()?.trim()?.takeIf { it.isNotEmpty() }
                 } ?: emptyList()
 
                 withContext(Dispatchers.Main) {
-                    dynamicCategories.clear()
-                    dynamicCategories.addAll(categoriesFromSheet)
-
-                    dynamicAisles.clear()
-                    dynamicAisles.addAll(aislesFromSheet.sorted())
-                    dynamicRacks.clear()
-                    dynamicRacks.addAll(racksFromSheet.sorted())
-                    dynamicShelves.clear()
-                    dynamicShelves.addAll(shelvesFromSheet.sorted())
-
-                    locationNameToIdMap.clear()
-                    locationNameToIdMap.putAll(tempLocationMap)
-
-                    occupiedLocationIds.clear()
-                    occupiedLocationIds.addAll(usedIds)
-
-                    // Populate the barcode set for validation
-                    existingProductBarcodes.clear()
-                    existingProductBarcodes.addAll(barcodesFromSheet)
-
+                    dynamicCategories.clear(); dynamicCategories.addAll(categoriesFromSheet)
+                    dynamicAisles.clear(); dynamicAisles.addAll(aislesFromSheet.sorted())
+                    dynamicRacks.clear(); dynamicRacks.addAll(racksFromSheet.sorted())
+                    dynamicShelves.clear(); dynamicShelves.addAll(shelvesFromSheet.sorted())
+                    locationNameToIdMap.clear(); locationNameToIdMap.putAll(tempLocationMap)
+                    occupiedLocationIds.clear(); occupiedLocationIds.addAll(usedIds)
+                    existingProductBarcodes.clear(); existingProductBarcodes.addAll(barcodesFromSheet)
                     newlySelectedLocationIds.clear()
                     progressDialog.dismiss()
                     Toast.makeText(context, "Ready to add products.", Toast.LENGTH_SHORT).show()
@@ -318,6 +324,31 @@ class MyBottomStockSheet(
             }
         }
     }
+
+    private suspend fun checkAndCreateSheetWithHeaders(
+        sheetsService: Sheets,
+        spreadsheetId: String,
+        sheetName: String,
+        headers: List<String>
+    ) = withContext(Dispatchers.IO) {
+        val spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute()
+        val sheetExists = spreadsheet.sheets.any { it.properties.title == sheetName }
+
+        if (!sheetExists) {
+            val addSheetRequest = AddSheetRequest().setProperties(SheetProperties().setTitle(sheetName))
+            val batchUpdate = BatchUpdateSpreadsheetRequest().setRequests(listOf(Request().setAddSheet(addSheetRequest)))
+            sheetsService.spreadsheets().batchUpdate(spreadsheetId, batchUpdate).execute()
+            Log.d("SheetCreation", "Sheet '$sheetName' created.")
+
+            val valueRange = ValueRange().setValues(listOf(headers))
+            sheetsService.spreadsheets().values()
+                .update(spreadsheetId, "'$sheetName'!A1", valueRange)
+                .setValueInputOption("USER_ENTERED").execute()
+            Log.d("SheetCreation", "Headers added to '$sheetName'.")
+        }
+    }
+
+
 
     private fun updateTotalCalculation() {
         val selectedItem = unit_of_measure_populates.selectedItem as? UnitOfMeasureItem
@@ -649,6 +680,8 @@ class MyBottomStockSheet(
         }
     }
 
+    // In class MyBottomStockSheet...
+
     private fun showAddNewCategoryDialog() {
         val input = EditText(requireContext()).apply { hint = "Enter new category name" }
         val container = FrameLayout(requireContext())
@@ -697,8 +730,11 @@ class MyBottomStockSheet(
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     val account = GoogleSignIn.getLastSignedInAccount(requireContext()) ?: throw Exception("User not logged in")
-                    val sheetsService = getSheetsService(account)
+                    val sheetsService = getSheetsService(account) // Use a writable service
                     val spreadsheetId = findSheetIdByName(getDriveService(account), SPREADSHEET_NAME) ?: throw Exception("Spreadsheet not found")
+
+                    // ✅ THIS IS THE FIX: Ensure the sheet exists before trying to append to it.
+                    ensureSheetExists(sheetsService, spreadsheetId, SHEET_CATEGORY)
 
                     val newCategoryId = "CAT-${UUID.randomUUID().toString().take(8).uppercase()}"
                     val timestamp = getCurrentTimestamp()

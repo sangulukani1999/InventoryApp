@@ -169,6 +169,8 @@ class goods_received_note : AppCompatActivity() {
     }
     // ✅ --- END: DELETION LOGIC ---
 
+    // In class goods_received_note
+
     private fun fetchGoodsReceivedData() {
         val progressDialog = ProgressDialog(this).apply {
             setMessage("Fetching goods...")
@@ -182,6 +184,32 @@ class goods_received_note : AppCompatActivity() {
                 val driveService = getDriveService(googleAccount)
                 val spreadsheetId = findSheetIdByName(driveService, "nia-bridge data")
                     ?: throw Exception("Spreadsheet 'nia-bridge data' not found.")
+
+                // ✅ START OF FIX: Ensure 'purchased goods sheet' exists before reading from it
+                val purchaseSheetName = "purchased goods sheet"
+                val spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).setFields("sheets.properties").execute()
+                val sheetExists = spreadsheet.sheets.any { it.properties.title == purchaseSheetName }
+
+                if (!sheetExists) {
+                    // If the sheet doesn't exist, create it with headers
+                    val addSheetRequest = com.google.api.services.sheets.v4.model.AddSheetRequest()
+                        .setProperties(com.google.api.services.sheets.v4.model.SheetProperties().setTitle(purchaseSheetName))
+                    val batchUpdate = BatchUpdateSpreadsheetRequest().setRequests(listOf(Request().setAddSheet(addSheetRequest)))
+                    sheetsService.spreadsheets().batchUpdate(spreadsheetId, batchUpdate).execute()
+
+                    val headerValues = listOf(listOf(
+                        "Barcode", "Product Name", "Quantity", "Unit Cost", "Total Cost",
+                        "Purchased By", "Received By", "Timestamp", "Expiry Date", "Expiry Timestamp",
+                        "Requisition Code"
+                    ))
+                    val headerBody = com.google.api.services.sheets.v4.model.ValueRange().setValues(headerValues)
+                    sheetsService.spreadsheets().values()
+                        .update(spreadsheetId, "$purchaseSheetName!A1", headerBody)
+                        .setValueInputOption("USER_ENTERED")
+                        .execute()
+                    Log.d("FetchGRN", "'$purchaseSheetName' was created successfully.")
+                }
+                // ✅ END OF FIX
 
                 // This logic remains correct from the previous step
                 val productsResponse = sheetsService.spreadsheets().values().get(spreadsheetId, "Products!C2:D").execute()
@@ -247,6 +275,7 @@ class goods_received_note : AppCompatActivity() {
             }
         }
     }
+
 
     private fun applyFilter(filterType: FilterType) {
         val calendar = Calendar.getInstance()

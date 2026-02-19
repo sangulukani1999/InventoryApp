@@ -1,13 +1,19 @@
 package com.example.zed
 
 data class UserReportData(
-    val userName: String,
     val userEmail: String,
+    val userName: String,
+    // Financial Data
     val outstandingLiability: Double,
-    val variances: Double, // This will hold the NET All-Time Stock Liability
+    val variances: Double,
     val todayShortage: Double,
-    val monthShortages: Double, // This will hold the NET Monthly Liability
+    val monthShortages: Double,
     val monthPaid: Double,
-    // ✅ ADD THIS FIELD BACK to hold the monthly surplus value
-    val monthPositiveVariances: Double
+    val monthPositiveVariances: Double,
+    // Working Status Data
+    val veryGoodPercentage: Int,
+    val goodPercentage: Int,
+    val badPercentage: Int,
+    // Other Data
+    val transactionTotalPages: Int?
 )

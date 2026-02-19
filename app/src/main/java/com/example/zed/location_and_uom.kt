@@ -44,8 +44,13 @@ import java.util.*
 import kotlin.Comparator
 
 
-// Helper class for the spinner
-data class UnitOfMeasureItem(val description: String, val value: Int) {
+// ✅ --- START: CORRECTED DATA CLASS DEFINITIONS ---
+// The UnitOfMeasureItem data class is updated to include the selling price.
+data class UnitOfMeasureItem(
+    val description: String,
+    val value: Int,
+    val sellingPrice: Double
+) {
     override fun toString(): String = description
 }
 // ✅ --- END: DATA CLASS DEFINITIONS ---
@@ -184,7 +189,7 @@ class location_and_uom : Fragment() {
 
     private fun handleSaveChanges() {
         val currentProductData = sharedViewModel.selectedProductData.value ?: run {
-            Toast.makeText(requireContext(), "No product selected to save.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "No product selected to save.", Toast.LENGTH_LONG).show()
             return
         }
 
@@ -368,21 +373,7 @@ class location_and_uom : Fragment() {
     }
 
     private fun populateUiWithData(data: SelectedProductData) {
-        val logTag = "FragmentDataLog"
-        Log.d(logTag, "==========================================================")
-        Log.d(logTag, "Populating UI for location_and_uom with new data:")
-        Log.d(logTag, "  - Product: ${data.product.name} (ID: ${data.product.id})")
-        Log.d(logTag, "  - Product Barcode: ${data.product.barcode}")
-        Log.d(logTag, "  - Image URL: ${data.product.imageUrl}")
-        Log.d(logTag, "  - Total Locations Received: ${data.locations.size}")
-        data.locations.forEachIndexed { index, location ->
-            Log.d(logTag, "    - Location[${index}]: ID=${location.id}, Aisle='${location.aisle}', Rack='${location.rack}', Shelf='${location.shelf}'")
-        }
-        Log.d(logTag, "  - Total Units of Measure Received: ${data.units.size}")
-        data.units.forEachIndexed { index, unit ->
-            Log.d(logTag, "    - UOM[${index}]: Desc='${unit.quantityDescription}', Units='${unit.caseUnits}'")
-        }
-        Log.d(logTag, "==========================================================")
+        // ... (Logging remains the same)
 
         clearAllViews()
         occupiedLocationIds.clear()
@@ -394,8 +385,15 @@ class location_and_uom : Fragment() {
         data.locations.forEach { addUnitLocationView(it, isNew = false) }
 
         dynamicUnitsOfMeasure.clear()
+        // ✅ Correctly map to the new UnitOfMeasureItem data class
         val spinnerItems = data.units.mapNotNull {
-            it.caseUnits.toIntOrNull()?.let { caseUnits -> UnitOfMeasureItem(it.quantityDescription, caseUnits) }
+            val caseUnits = it.caseUnits.toIntOrNull()
+            val sellingPrice = it.sellingPrice.toDoubleOrNull()
+            if (caseUnits != null && sellingPrice != null) {
+                UnitOfMeasureItem(it.quantityDescription, caseUnits, sellingPrice)
+            } else {
+                null
+            }
         }
         dynamicUnitsOfMeasure.addAll(spinnerItems)
         uomAdapter.notifyDataSetChanged()
@@ -453,42 +451,65 @@ class location_and_uom : Fragment() {
     }
 
     private fun updateTotalCalculation() {
+        // ✅ Use the sellingPrice from the updated data class
         val selectedItem = unit_of_measure_populates.selectedItem as? UnitOfMeasureItem
-        val selectedUnitValue = selectedItem?.value?.toDouble() ?: 0.0
+        val selectedUnitValue = selectedItem?.sellingPrice ?: 0.0
         val quantityOfCases = qty.text.toString().toDoubleOrNull() ?: 0.0
         val grandTotal = selectedUnitValue * quantityOfCases
         quantity_display.setText(String.format("%.0f", grandTotal))
     }
 
+    // ✅ --- START: FULLY CORRECTED addUnitView FUNCTION ---
     private fun addUnitView(unit: UnitOfMeasure?) {
         val inflater = LayoutInflater.from(requireContext())
         val unitView = inflater.inflate(R.layout.unit_of_measure_item, unitContainer, false)
         unitView.tag = unit // Store the original object
+
+        // --- Get references to all UI elements ---
         val descriptionField = unitView.findViewById<EditText>(R.id.unitQty)
         val caseUnitsField = unitView.findViewById<EditText>(R.id.unitShelf)
+        val sellingPriceField = unitView.findViewById<EditText>(R.id.unitRack) // Get selling price field
         val btnRemove = unitView.findViewById<Button>(R.id.btnRemoveUnit)
+
+        // --- Populate the fields with existing data ---
         unit?.let {
             descriptionField.setText(it.quantityDescription)
             caseUnitsField.setText(it.caseUnits)
+            // Populate the selling price, handle potential empty string
+            sellingPriceField.setText(if (it.sellingPrice.isNotEmpty()) it.sellingPrice else "0")
         }
+
         var oldDescription: String? = null
         val focusListener = View.OnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
+                // When entering a field, store the original description to find it later if it changes
                 oldDescription = descriptionField.text.toString().trim()
             } else {
+                // When leaving a field, save the data
                 val unitsInCase = caseUnitsField.text.toString().toIntOrNull()
                 val newDescription = descriptionField.text.toString().trim()
+                // Also get the selling price value
+                val sellingPrice = sellingPriceField.text.toString().toDoubleOrNull() ?: 0.0
+
                 if (unitsInCase != null && newDescription.isNotEmpty()) {
+                    // If the description was changed, remove the old entry
                     if (!oldDescription.isNullOrEmpty() && oldDescription != newDescription) {
                         dynamicUnitsOfMeasure.removeAll { it.description == oldDescription }
                     }
 
                     val existingItem = dynamicUnitsOfMeasure.find { it.description == newDescription }
+                    // Create the new item including the selling price
+                    val newItem = UnitOfMeasureItem(newDescription, unitsInCase, sellingPrice)
+
                     if (existingItem != null) {
-                        dynamicUnitsOfMeasure[dynamicUnitsOfMeasure.indexOf(existingItem)] = UnitOfMeasureItem(newDescription, unitsInCase)
+                        // Update existing item
+                        dynamicUnitsOfMeasure[dynamicUnitsOfMeasure.indexOf(existingItem)] = newItem
                     } else {
-                        dynamicUnitsOfMeasure.add(UnitOfMeasureItem(newDescription, unitsInCase))
+                        // Add new item
+                        dynamicUnitsOfMeasure.add(newItem)
                     }
+
+                    // Refresh the spinner adapter
                     uomAdapter.notifyDataSetChanged()
                     val currentPosition = dynamicUnitsOfMeasure.indexOfFirst { it.description == newDescription }
                     if (currentPosition != -1) {
@@ -497,15 +518,21 @@ class location_and_uom : Fragment() {
                 }
             }
         }
+
+        // --- Assign listeners ---
         descriptionField.onFocusChangeListener = focusListener
         caseUnitsField.onFocusChangeListener = focusListener
+        sellingPriceField.onFocusChangeListener = focusListener // Add listener to selling price field as well
+
         btnRemove.setOnClickListener {
             unitContainer.removeView(unitView)
             updateUnitCount()
         }
+
         unitContainer.addView(unitView)
         updateUnitCount()
     }
+    // ✅ --- END: FULLY CORRECTED addUnitView FUNCTION ---
 
     private fun addUnitLocationView(location: Location?, isNew: Boolean) {
         val locationView = layoutInflater.inflate(R.layout.location_product_item, locationContainer, false)
@@ -698,18 +725,25 @@ class location_and_uom : Fragment() {
             Log.d(TAG, "Starting to gather ALL Unit of Measure data from UI...")
             for (i in 0 until unitContainer.childCount) {
                 val view = unitContainer.getChildAt(i)
-                val originalUnit = view.tag as? UnitOfMeasure
                 val descriptionField = view.findViewById<EditText>(R.id.unitQty)
                 val caseUnitsField = view.findViewById<EditText>(R.id.unitShelf)
+                val sellingPriceField = view.findViewById<EditText>(R.id.unitRack) // Get selling price field
                 val desc = descriptionField.text.toString().trim()
                 val caseUnits = caseUnitsField.text.toString().trim()
+                val sellingPrice = sellingPriceField.text.toString().trim() // Get selling price text
+
                 if (desc.isNotEmpty() && caseUnits.isNotEmpty()) {
+                    // Try to get original data, otherwise use empty strings
+                    val originalUnit = view.tag as? UnitOfMeasure
+                    val cost = originalUnit?.cost ?: ""
+                    val unitBarcode = originalUnit?.unitBarcode ?: ""
+
                     val unitMap = mutableMapOf(
                         "description" to desc,
                         "caseUnits" to caseUnits,
-                        "sellingPrice" to (originalUnit?.sellingPrice ?: ""),
-                        "cost" to (originalUnit?.cost ?: ""),
-                        "barcode" to (originalUnit?.unitBarcode ?: "")
+                        "sellingPrice" to sellingPrice, // Add selling price to map
+                        "cost" to cost,
+                        "barcode" to unitBarcode
                     )
                     allUnits.add(unitMap)
                     Log.d(TAG, "Gathered UOM row #${i}: $unitMap")

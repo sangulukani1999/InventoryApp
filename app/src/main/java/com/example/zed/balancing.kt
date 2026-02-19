@@ -54,8 +54,8 @@ data class BalancingData(
     val sales: List<SheetRow>,
     val closingBalances: List<SheetRow>,
     val investments: List<SheetRow>,
-    val expenses: List<SheetRow>, // Will hold ONLY non-purchase expenses
-    val purchases: List<SheetRow>, // Will hold ONLY "Stock Purchase" expenses
+    val expenses: List<SheetRow>,
+    val purchases: List<SheetRow>,
     val inventoryCost: Double,
     val profitTransactions: List<ProfitTransaction>
 )
@@ -75,8 +75,8 @@ class balancing : Fragment() {
 
     private val dateFormats = listOf(
         SimpleDateFormat("d/M/yyyy, h:mm:ss a", Locale.getDefault()),
-        SimpleDateFormat("dd/MM/yyyy, HH:mm:ss", Locale.getDefault()),
-        SimpleDateFormat("d/M/yyyy, HH:mm:ss", Locale.getDefault()),
+        SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()),
+        SimpleDateFormat("d/M/yyyy HH:mm:ss", Locale.getDefault()),
         SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
     )
 
@@ -146,12 +146,13 @@ class balancing : Fragment() {
                 val spreadsheetId = findSheetIdByName(getDriveService(googleAccount), "nia-bridge data")
                     ?: throw IOException("Spreadsheet 'nia-bridge data' not found.")
 
-                // Fetching Expenses sheet now includes column B for the category
+                // ✅ --- FIX 1: UPDATED RANGES ---
+                // We now fetch the columns needed for sales AND profit from the 'Transactions' sheet.
                 val ranges = listOf(
                     "Closing Balance!A:H",
-                    "Expenses!B:H", // Range changed to B:H to include category
+                    "Expenses!C:I",      // Corrected to include category, amount, and timestamp
                     "Products!D:I",
-                    "Transactions!G:H"
+                    "Transactions!H:L" // H=items, I=date, L=total
                 )
 
                 val response = sheetsService.spreadsheets().values().batchGet(spreadsheetId).setRanges(ranges).execute()
@@ -160,31 +161,33 @@ class balancing : Fragment() {
                 val closingBalanceData = values.getOrNull(0)?.getValues()
                 val expensesData = values.getOrNull(1)?.getValues()
                 val productData = values.getOrNull(2)?.getValues()
-                val transactionCartData = values.getOrNull(3)?.getValues()
+                val transactionData = values.getOrNull(3)?.getValues() // Renamed for clarity
 
-                // --- Parse all data ---
-                val sales = parseSheet(closingBalanceData, timestampCol = 5, valueCol = 1)
+                // --- PARSE DATA ---
                 val closingBalances = parseSheet(closingBalanceData, timestampCol = 5, valueCol = 3)
                 val investments = parseSheet(closingBalanceData, timestampCol = 5, valueCol = 6)
 
-                // --- Separate Expenses and Purchases ---
-                val allExpenses = parseSheetWithCategory(expensesData, timestampCol = 6, valueCol = 3, categoryCol = 0)
+                // Separate Expenses and Purchases
+                val allExpenses = parseSheetWithCategory(expensesData, timestampCol = 5, valueCol = 2, categoryCol = 0)
                 val purchases = allExpenses.filter { it.category == "Stock Purchase" }.map { SheetRow(it.timestamp, it.value) }
                 val otherExpenses = allExpenses.filter { it.category != "Stock Purchase" }.map { SheetRow(it.timestamp, it.value) }
 
-
+                // Inventory and Profit Calculation
                 val inventoryCost = calculateInventoryCost(productData)
                 val costPriceMap = productData?.drop(1)?.associate { row ->
                     row.getOrNull(0)?.toString() to (row.getOrNull(5)?.toString()?.toDoubleOrNull() ?: 0.0)
                 } ?: emptyMap()
-                val profitTransactions = parseTransactionsForProfit(transactionCartData, costPriceMap)
+
+                // ✅ --- FIX 2: PARSE TRANSACTIONS FOR BOTH SALES AND PROFIT ---
+                // This single function now correctly extracts sales totals and profit data.
+                val (sales, profitTransactions) = parseTransactionsForSalesAndProfit(transactionData, costPriceMap)
 
                 fullBalancingData = BalancingData(
-                    sales,
+                    sales, // Use the accurate sales data from the 'Transactions' sheet
                     closingBalances,
                     investments,
-                    otherExpenses, // Pass the filtered list of other expenses
-                    purchases,     // Pass the filtered list of purchases
+                    otherExpenses,
+                    purchases,
                     inventoryCost,
                     profitTransactions
                 )
@@ -207,6 +210,55 @@ class balancing : Fragment() {
         }
     }
 
+    // ✅ --- FIX 3: NEW UNIFIED PARSING FUNCTION ---
+    // This function replaces the old 'parseTransactionsForProfit' and also handles sales.
+    private fun parseTransactionsForSalesAndProfit(data: List<List<Any>>?, costMap: Map<String?, Double>): Pair<List<SheetRow>, List<ProfitTransaction>> {
+        val salesList = mutableListOf<SheetRow>()
+        val profitTransactionList = mutableListOf<ProfitTransaction>()
+
+        data?.drop(1)?.forEach { row ->
+            // Row mapping for range Transactions!H:L
+            val itemsString = row.getOrNull(0)?.toString()  // Column H
+            val timestampStr = row.getOrNull(1)?.toString() // Column I
+            val totalStr = row.getOrNull(4)?.toString()     // Column L
+
+            val timestamp = parseDateString(timestampStr)
+            if (timestamp == null) return@forEach // Skip if date is invalid
+
+            // 1. Get Sales Total
+            val totalValue = totalStr?.replace(",", "")?.toDoubleOrNull()
+            if (totalValue != null) {
+                salesList.add(SheetRow(timestamp, totalValue))
+            } else {
+                Log.w(TAG, "Could not parse total value for sales: '$totalStr'")
+            }
+
+            // 2. Get Profit Data
+            if (!itemsString.isNullOrBlank() && itemsString.startsWith("[")) {
+                try {
+                    val items = mutableListOf<ProfitTransactionItem>()
+                    val cartArray = JSONArray(itemsString)
+                    for (j in 0 until cartArray.length()) {
+                        val itemObj = cartArray.getJSONObject(j)
+                        items.add(
+                            ProfitTransactionItem(
+                                price = itemObj.optDouble("price", 0.0),
+                                quantity = itemObj.optString("quantity").toIntOrNull() ?: 0,
+                                costPrice = costMap[itemObj.optString("id")] ?: 0.0
+                            )
+                        )
+                    }
+                    if (items.isNotEmpty()) {
+                        profitTransactionList.add(ProfitTransaction(items, timestamp))
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to parse transaction items for profit: $row", e)
+                }
+            }
+        }
+        return Pair(salesList, profitTransactionList)
+    }
+
     private fun parseSheet(data: List<List<Any>>?, timestampCol: Int, valueCol: Int): List<SheetRow> {
         return data?.drop(1)?.mapNotNull { row ->
             val timestampStr = row.getOrNull(timestampCol)?.toString()
@@ -227,10 +279,8 @@ class balancing : Fragment() {
         } ?: emptyList()
     }
 
-    // Helper data class for parsing with category
     private data class CategorizedRow(val category: String, val timestamp: Date, val value: Double)
 
-    // New function to parse expenses along with their category
     private fun parseSheetWithCategory(data: List<List<Any>>?, timestampCol: Int, valueCol: Int, categoryCol: Int): List<CategorizedRow> {
         return data?.drop(1)?.mapNotNull { row ->
             val category = row.getOrNull(categoryCol)?.toString()
@@ -250,40 +300,8 @@ class balancing : Fragment() {
         } ?: emptyList()
     }
 
-
-    private fun parseTransactionsForProfit(data: List<List<Any>>?, costMap: Map<String?, Double>): List<ProfitTransaction> {
-        val transactionList = mutableListOf<ProfitTransaction>()
-        data?.drop(1)?.forEach { row ->
-            val cartString = row.getOrNull(0)?.toString()
-            val timestampStr = row.getOrNull(1)?.toString()
-            val timestamp = parseDateString(timestampStr)
-
-            if (cartString.isNullOrBlank() || !cartString.startsWith("[") || timestamp == null) {
-                return@forEach
-            }
-
-            try {
-                val items = mutableListOf<ProfitTransactionItem>()
-                val cartArray = JSONArray(cartString)
-                for (j in 0 until cartArray.length()) {
-                    val itemObj = cartArray.getJSONObject(j)
-                    items.add(
-                        ProfitTransactionItem(
-                            price = itemObj.optDouble("price", 0.0),
-                            quantity = itemObj.optString("quantity").toIntOrNull() ?: 0,
-                            costPrice = costMap[itemObj.optString("id")] ?: 0.0
-                        )
-                    )
-                }
-                if (items.isNotEmpty()) {
-                    transactionList.add(ProfitTransaction(items, timestamp))
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to parse transaction for profit: $row", e)
-            }
-        }
-        return transactionList
-    }
+    // This function is now replaced by parseTransactionsForSalesAndProfit and can be removed.
+    // private fun parseTransactionsForProfit(...) { ... }
 
     private fun calculateInventoryCost(productData: List<List<Any>>?): Double {
         return productData?.drop(1)?.sumOf { row ->
@@ -392,20 +410,14 @@ class balancing : Fragment() {
         binding.salesFigure.text = currencyFormat.format(sales)
         binding.openingBalanceFigure.text = currencyFormat.format(openingBalance)
         binding.anyInvestmentFigure2.text = currencyFormat.format(investments)
-
-        // --- Display separated expenses and purchases ---
         binding.lessExpensesFigure.text = currencyFormat.format(otherExpenses)
-        binding.purchases.text = currencyFormat.format(purchases) // Update the purchases TextView
-
+        binding.purchases.text = currencyFormat.format(purchases)
         binding.expectedCashFigure.text = currencyFormat.format(expectedCash)
         binding.availableCashFigure.text = currencyFormat.format(availableCash)
         binding.shortagesFigure.text = currencyFormat.format(shortages)
         binding.capitalFigure.text = currencyFormat.format(inventoryCost)
         binding.profitFigure.text = currencyFormat.format(grossProfit)
 
-        // ✅ --- THIS IS THE CORRECTED LOGIC ---
-        // If shortages are negative (a deficit), color is red.
-        // If shortages are positive or zero (a surplus), color is green.
         binding.shortagesFigure.setTextColor(
             ContextCompat.getColor(
                 requireContext(),

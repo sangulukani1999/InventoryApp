@@ -12,6 +12,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
+        android:animateLayoutChanges="true"
         android:padding="16dp">
 
         <!-- User Info Header -->
@@ -84,7 +85,7 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- ✅ START: THIS IS THE NEW SECTION ADDED TO YOUR LAYOUT -->
+        <!-- Surpluses This Month (Credit): -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -109,10 +110,8 @@
                 android:textSize="11sp"
                 android:textStyle="bold" />
         </LinearLayout>
-        <!-- ✅ END: NEW SECTION -->
 
-
-        <!-- Today's Report -->
+        <!-- PAYMENT SECTION (This part remains as you had it) -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -142,7 +141,6 @@
                 android:textSize="11sp" />
         </LinearLayout>
 
-        <!-- PAYMENT SECTION -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -157,7 +155,6 @@
                 android:text="Pay Liability:"
                 android:textSize="11sp" />
 
-            <!-- EditText for admins to enter payment amount -->
             <EditText
                 android:id="@+id/todayPaidEditText"
                 android:layout_width="80dp"
@@ -170,7 +167,6 @@
                 android:visibility="gone"
                 tools:visibility="visible" />
 
-            <!-- Button for admins to confirm the payment -->
             <Button
                 android:id="@+id/confirmPaidButton"
                 android:layout_width="wrap_content"
@@ -181,10 +177,8 @@
                 tools:visibility="visible" />
 
         </LinearLayout>
-        <!-- END PAYMENT SECTION -->
 
-
-        <!-- This Month's Report -->
+        <!-- This Month's Report (This part remains as you had it) -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -232,6 +226,159 @@
                 android:layout_height="wrap_content"
                 android:text="K0.00"
                 android:textSize="11sp" />
+        </LinearLayout>
+
+        <!-- ✅ START: ADDED COLLAPSIBLE REVIEW SECTION -->
+
+        <!-- This is the button that triggers the expand/collapse -->
+        <!-- ✅ CHANGE THIS from Button to com.google.android.material.button.MaterialButton -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/reviewDetailsButton"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:text="Review Transactions"
+            android:textAllCaps="false"
+            app:icon="@drawable/drop_down_option_arrow"
+            app:iconGravity="end" />
+
+        <!-- This is the container that will be shown or hidden -->
+        <LinearLayout
+            android:id="@+id/collapsibleContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            tools:visibility="visible">
+
+            <!-- Nested RecyclerView to show the transaction list -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/transactionsRecyclerView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+                tools:itemCount="3"
+                tools:listitem="@layout/item_user_transaction" /> <!-- You need to create this layout -->
+
+            <!-- Pagination control section -->
+            <LinearLayout
+                android:id="@+id/paginationControls"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/prevButton"
+                    style="@style/Widget.AppCompat.Button.Small"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:enabled="false"
+                    android:text="Prev" />
+
+                <TextView
+                    android:id="@+id/pageInfoTextView"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text="Page 1 of 1"
+                    android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/nextButton"
+                    style="@style/Widget.AppCompat.Button.Small"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:text="Next"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
+        <!-- ✅ END: ADDED COLLAPSIBLE REVIEW SECTION -->
+
+        <!-- This is your original review/status section at the bottom -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingTop="10dp">
+
+            <androidx.constraintlayout.widget.ConstraintLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <androidx.cardview.widget.CardView
+                    android:id="@+id/UserWorkingStatus"
+                    android:layout_width="10sp"
+                    android:layout_height="10dp"
+                    android:layout_marginEnd="8dp"
+                    app:cardBackgroundColor="@color/variance_positive"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toStartOf="@+id/reviewFilter"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+                <androidx.cardview.widget.CardView
+                    android:id="@+id/review_button"
+                    android:layout_width="60dp"
+                    android:layout_height="20dp"
+                    app:cardBackgroundColor="#0071c1"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintStart_toStartOf="parent"
+                    app:layout_constraintTop_toTopOf="parent">
+
+                    <androidx.constraintlayout.widget.ConstraintLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent">
+
+                        <TextView
+                            android:id="@+id/textView56"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Review"
+                            android:textColor="#fff"
+                            android:textSize="11sp"
+                            app:layout_constraintBottom_toBottomOf="parent"
+                            app:layout_constraintEnd_toEndOf="parent"
+                            app:layout_constraintStart_toStartOf="parent"
+                            app:layout_constraintTop_toTopOf="parent" />
+                    </androidx.constraintlayout.widget.ConstraintLayout>
+                </androidx.cardview.widget.CardView>
+
+                <TextView
+                    android:id="@+id/textView58"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="8dp"
+                    android:text="Working Status:"
+                    android:textSize="11sp"
+                    app:layout_constraintBottom_toBottomOf="@+id/UserWorkingStatus"
+                    app:layout_constraintEnd_toStartOf="@+id/UserWorkingStatus"
+                    app:layout_constraintTop_toTopOf="@+id/UserWorkingStatus" />
+
+                <Spinner
+                    android:id="@+id/reviewFilter"
+                    android:layout_width="70dp"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/spinner_border"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintTop_toTopOf="parent" />
+
+                <ImageView
+                    android:id="@+id/imageView"
+                    android:layout_width="15dp"
+                    android:layout_height="15dp"
+                    android:layout_marginEnd="4dp"
+                    android:src="@drawable/drop_down_option_arrow"
+                    app:layout_constraintBottom_toBottomOf="@+id/reviewFilter"
+                    app:layout_constraintEnd_toEndOf="parent"
+                    app:layout_constraintTop_toTopOf="@+id/reviewFilter"
+                    app:layout_constraintVertical_bias="0.571" />
+
+            </androidx.constraintlayout.widget.ConstraintLayout>
         </LinearLayout>
 
     </LinearLayout>

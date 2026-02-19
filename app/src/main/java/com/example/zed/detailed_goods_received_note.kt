@@ -110,7 +110,7 @@ class detailed_goods_received_note : AppCompatActivity() {
         binding.datailedGoodsReceivenNoteRecyclerView.adapter = adapter
     }
 
-    // ✅✅✅ --- THIS FUNCTION IS NOW THE CORE LOGIC --- ✅✅✅
+
     private fun handlePurchase(purchasedItems: List<DetailedGoodsReceivedProduct>) {
         val dialog = ProgressDialog(this).apply {
             setMessage("Processing Purchase & Expense...")
@@ -128,32 +128,31 @@ class detailed_goods_received_note : AppCompatActivity() {
 
                 // --- Step 1: Add items to "purchased goods sheet" ---
                 val purchaseSheetName = "purchased goods sheet"
-                // This block to create the sheet if it doesn't exist is kept from your original code
-                var sheetExists = false
+                // This sheet creation is already handled correctly in your code
+                var purchaseSheetExists = false
                 val spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute()
                 for (sheet in spreadsheet.sheets) {
                     if (sheet.properties.title == purchaseSheetName) {
-                        sheetExists = true
+                        purchaseSheetExists = true
                         break
                     }
                 }
-                if (!sheetExists) {
+                if (!purchaseSheetExists) {
                     val addSheetRequest = AddSheetRequest().setProperties(SheetProperties().setTitle(purchaseSheetName))
                     val batchUpdate = BatchUpdateSpreadsheetRequest().setRequests(listOf(Request().setAddSheet(addSheetRequest)))
                     sheetsService.spreadsheets().batchUpdate(spreadsheetId, batchUpdate).execute()
-                    val headerValues = listOf(listOf(
+                    val purchaseHeaderValues = listOf(listOf(
                         "Barcode", "Product Name", "Quantity", "Unit Cost", "Total Cost",
                         "Purchased By", "Received By", "Timestamp", "Expiry Date", "Expiry Timestamp",
                         "Requisition Code"
                     ))
-                    val headerBody = ValueRange().setValues(headerValues)
+                    val purchaseHeaderBody = ValueRange().setValues(purchaseHeaderValues)
                     sheetsService.spreadsheets().values()
-                        .update(spreadsheetId, "$purchaseSheetName!A1", headerBody)
+                        .update(spreadsheetId, "$purchaseSheetName!A1", purchaseHeaderBody)
                         .setValueInputOption("USER_ENTERED")
                         .execute()
                 }
 
-                // Append the purchased items
                 val timestampFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
                 val valuesToAppend = purchasedItems.map { item ->
                     val totalCost = (item.unitCost.toBigDecimalOrNull() ?: BigDecimal.ZERO) * item.quantity.toBigDecimal()
@@ -176,6 +175,33 @@ class detailed_goods_received_note : AppCompatActivity() {
                 }.toDouble()
 
                 if (totalPurchaseCost > 0) {
+                    // ✅ START OF FIX: Ensure the "Expenses" sheet exists before writing to it.
+                    val expenseSheetName = "Expenses"
+                    var expenseSheetExists = false
+                    // Re-fetch spreadsheet properties if needed, or reuse if confident
+                    val currentSpreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute()
+                    for (sheet in currentSpreadsheet.sheets) {
+                        if (sheet.properties.title == expenseSheetName) {
+                            expenseSheetExists = true
+                            break
+                        }
+                    }
+                    if (!expenseSheetExists) {
+                        val addSheetRequest = AddSheetRequest().setProperties(SheetProperties().setTitle(expenseSheetName))
+                        val batchUpdate = BatchUpdateSpreadsheetRequest().setRequests(listOf(Request().setAddSheet(addSheetRequest)))
+                        sheetsService.spreadsheets().batchUpdate(spreadsheetId, batchUpdate).execute()
+                        val expenseHeaderValues = listOf(listOf(
+                            "UniqueId", "Item", "Description", "Quantity", "Amount",
+                            "Permit", "User", "Timestamp", "Approval Timestamp"
+                        ))
+                        val expenseHeaderBody = ValueRange().setValues(expenseHeaderValues)
+                        sheetsService.spreadsheets().values()
+                            .update(spreadsheetId, "$expenseSheetName!A1", expenseHeaderBody)
+                            .setValueInputOption("USER_ENTERED")
+                            .execute()
+                    }
+                    // ✅ END OF FIX
+
                     val expenseTimestamp = timestampFormat.format(Date())
                     val expenseRow = listOf(
                         UUID.randomUUID().toString(),
@@ -186,11 +212,11 @@ class detailed_goods_received_note : AppCompatActivity() {
                         "TRUE", // isCredit
                         currentUserEmail,
                         expenseTimestamp,
-                        expenseTimestamp
+                        expenseTimestamp // Assuming Approval Timestamp is same as creation for now
                     )
                     val expenseValueRange = ValueRange().setValues(listOf(expenseRow))
                     sheetsService.spreadsheets().values()
-                        .append(spreadsheetId, "Expenses!A:I", expenseValueRange)
+                        .append(spreadsheetId, "$expenseSheetName!A:I", expenseValueRange) // Append to the correct sheet name
                         .setValueInputOption("USER_ENTERED")
                         .execute()
                 }
@@ -212,6 +238,7 @@ class detailed_goods_received_note : AppCompatActivity() {
             }
         }
     }
+
 
 
     private fun updateGoodsReceivedStatus(item: DetailedGoodsReceivedProduct, position: Int) {

@@ -1,16 +1,22 @@
 package com.example.zed
 
+import android.app.AlertDialog
+import android.app.TimePickerDialog
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.RadioGroup
 import android.widget.Toast
+import androidx.core.util.Pair
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import com.example.zed.databinding.FragmentUserReportBinding
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import com.google.android.material.datepicker.MaterialDatePicker
+import com.google.android.material.textfield.TextInputEditText
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
@@ -18,7 +24,7 @@ import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
 import com.google.api.services.sheets.v4.Sheets
 import com.google.api.services.sheets.v4.SheetsScopes
-import com.google.api.services.sheets.v4.model.ValueRange
+import com.google.api.services.sheets.v4.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -43,10 +49,19 @@ class user_report : Fragment() {
 
     private val dateFormats = listOf(
         SimpleDateFormat("d/M/yyyy, h:mm:ss a", Locale.getDefault()),
-        SimpleDateFormat("dd/MM/yyyy, HH:mm:ss", Locale.getDefault()),
+        SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()),
         SimpleDateFormat("d/M/yyyy, HH:mm:ss", Locale.getDefault()),
         SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
     )
+
+    // Properties for holding all fetched data
+    private var allClosingBalanceData: List<List<Any>> = emptyList()
+    private var allExpensesData: List<List<Any>> = emptyList()
+    private var allStockTakingData: List<List<Any>> = emptyList()
+    private var allReviewData: List<List<Any>> = emptyList()
+    private var allUsers: List<UserRole> = emptyList()
+
+    private val userFilterSelections = mutableMapOf<String, String>()
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -65,16 +80,371 @@ class user_report : Fragment() {
         }
         googleAccount = account
         setupRecyclerView()
-        fetchUserReports()
-        binding.swipeRefreshLayout.setOnRefreshListener { fetchUserReports() }
+        fetchInitialData()
+        binding.swipeRefreshLayout.setOnRefreshListener { fetchInitialData() }
+    }
+
+    private fun setupRecyclerView() {
+        adapter = UserReportAdapter(
+            isAdmin = false, // This will be updated in fetchInitialData
+            onConfirmPayment = { userEmail, amount -> recordPayment(userEmail, amount) },
+            onPageRequested = { userId, page, holder ->
+                fetchTransactionsForUser(userId, page, holder)
+            },
+            onAddReviewClicked = { userEmail -> showAddReviewDialog(userEmail) },
+            onFilterChanged = { userEmail, period ->
+                userFilterSelections[userEmail] = period
+                if (period == "Custom") {
+                    showDatePicker { dateRange ->
+                        processAndDisplayReports(userEmail, dateRange)
+                    }
+                } else {
+                    val dateRange = getDateRangeForPeriod(period)
+                    processAndDisplayReports(userEmail, dateRange)
+                }
+            }
+        )
+        binding.userReportRecyclerView.adapter = adapter
+    }
+
+    private fun fetchInitialData() {
+        binding.swipeRefreshLayout.isRefreshing = true
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val sheetsService = getSheetsService(googleAccount)
+                val spreadsheetId = findSheetIdByName(getDriveService(googleAccount), "nia-bridge data")
+                    ?: throw IOException("Spreadsheet 'nia-bridge data' not found.")
+
+                allUsers = fetchUsersAndRolesFromScript()
+                val currentUser = allUsers.firstOrNull { it.email.equals(googleAccount.email, ignoreCase = true) }
+                isAdmin = currentUser?.isSubUser == false
+
+                val rangesToFetch = listOf("Closing Balance!A:I", "Expenses!A:I", "stock_taking!A:H", "review_sheet!A:E")
+                val batchData = sheetsService.spreadsheets().values().batchGet(spreadsheetId).setRanges(rangesToFetch).execute()
+
+                allClosingBalanceData = batchData.valueRanges.getOrNull(0)?.getValues()?.drop(1) ?: emptyList()
+                allExpensesData = batchData.valueRanges.getOrNull(1)?.getValues()?.drop(1) ?: emptyList()
+                allStockTakingData = batchData.valueRanges.getOrNull(2)?.getValues()?.drop(1) ?: emptyList()
+                allReviewData = batchData.valueRanges.getOrNull(3)?.getValues()?.drop(1) ?: emptyList()
+
+                // --- START OF THE FIX ---
+                val usersToDisplay = if (isAdmin) allUsers else allUsers.filter { it.email == googleAccount.email }
+
+                // 1. Build the complete list of reports first
+                val userReports = usersToDisplay.map { user ->
+                    val initialPeriod = userFilterSelections.getOrPut(user.email) { "Today" }
+                    val dateRange = getDateRangeForPeriod(initialPeriod)
+                    // Generate the report data, but don't submit it to the adapter yet
+                    generateUserReport(user.email, dateRange)
+                }
+
+                // 2. Switch to the main thread and submit the complete list at once
+                withContext(Dispatchers.Main) {
+                    adapter.setAdminStatus(isAdmin) // Update admin status in the adapter
+                    adapter.submitList(userReports)
+                }
+                // --- END OF THE FIX ---
+
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Log.e(TAG, "Error fetching initial data", e)
+                    Toast.makeText(requireContext(), "Failed to load data: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            } finally {
+                withContext(Dispatchers.Main) {
+                    binding.swipeRefreshLayout.isRefreshing = false
+                }
+            }
+        }
+    }
+
+    // ✅ NEW HELPER FUNCTION - Does not touch the adapter
+    private fun generateUserReport(userEmail: String, dateRange: Pair<Date, Date>): UserReportData {
+        val startDate = dateRange.first
+        val endDate = dateRange.second
+
+        val filteredReviews = allReviewData.filter { row ->
+            val timestampStr = row.getOrNull(3)?.toString()
+            val date = parseDateString(timestampStr)
+            date != null && !date.before(startDate) && !date.after(endDate)
+        }
+
+        val user = allUsers.find { it.email.equals(userEmail, ignoreCase = true) }!!
+
+        val userReviews = filteredReviews.filter { it.getOrNull(0)?.toString().equals(user.email, ignoreCase = true) }
+        val total = userReviews.size
+
+        val veryGoodCount = userReviews.count { it.getOrNull(2)?.toString().equals("Very Good", ignoreCase = true) }
+        val goodCount = userReviews.count { it.getOrNull(2)?.toString().equals("Good", ignoreCase = true) }
+        val badCount = userReviews.count { it.getOrNull(2)?.toString().equals("Bad", ignoreCase = true) }
+
+        val veryGoodPercent = if (total > 0) (veryGoodCount * 100) / total else 0
+        val goodPercent = if (total > 0) (goodCount * 100) / total else 0
+        val badPercent = if (total > 0) (badCount * 100) / total else 0
+
+        val financialData = processUserData(user.email, allClosingBalanceData, allExpensesData, allStockTakingData)
+
+        return UserReportData(
+            userName = user.email.split("@").firstOrNull()?.replaceFirstChar { it.titlecase() } ?: "Unknown",
+            userEmail = user.email,
+            outstandingLiability = financialData.outstandingLiability,
+            variances = financialData.variances,
+            todayShortage = financialData.todayShortage,
+            monthShortages = financialData.monthShortages,
+            monthPaid = financialData.monthPaid,
+            monthPositiveVariances = financialData.monthPositiveVariances,
+            veryGoodPercentage = veryGoodPercent,
+            goodPercentage = goodPercent,
+            badPercentage = badPercent,
+            transactionTotalPages = 1
+        )
+    }
+
+    // ✅ CORRECTED - This function now ONLY updates an existing item
+    private fun processAndDisplayReports(userEmail: String, dateRange: Pair<Date, Date>) {
+        // This should run on a background thread to avoid blocking the UI
+        lifecycleScope.launch(Dispatchers.IO) {
+            val newReport = generateUserReport(userEmail, dateRange)
+
+            withContext(Dispatchers.Main) {
+                val currentList = adapter.currentList.toMutableList()
+                val index = currentList.indexOfFirst { it.userEmail.equals(userEmail, ignoreCase = true) }
+
+                if (index != -1) {
+                    currentList[index] = newReport
+                    adapter.submitList(currentList)
+                }
+            }
+        }
     }
 
 
-    private fun setupRecyclerView() {
-        adapter = UserReportAdapter(emptyList(), false) { userEmail, amount ->
-            recordPayment(userEmail, amount)
+    private fun getDateRangeForPeriod(period: String): Pair<Date, Date> {
+        val cal = Calendar.getInstance()
+
+        return when (period) {
+            "Yesterday" -> {
+                cal.add(Calendar.DAY_OF_YEAR, -1)
+                Pair(getStartOfDay(cal.time), getEndOfDay(cal.time))
+            }
+            "This Week" -> {
+                cal.set(Calendar.DAY_OF_WEEK, cal.firstDayOfWeek)
+                val start = getStartOfDay(cal.time)
+                cal.add(Calendar.WEEK_OF_YEAR, 1)
+                cal.add(Calendar.DAY_OF_YEAR, -1)
+                val end = getEndOfDay(cal.time)
+                Pair(start, end)
+            }
+            "This Month" -> {
+                cal.set(Calendar.DAY_OF_MONTH, 1)
+                val start = getStartOfDay(cal.time)
+                cal.add(Calendar.MONTH, 1)
+                cal.add(Calendar.DAY_OF_YEAR, -1)
+                val end = getEndOfDay(cal.time)
+                Pair(start, end)
+            }
+            else -> { // Default to "Today"
+                Pair(getStartOfDay(cal.time), getEndOfDay(cal.time))
+            }
         }
-        binding.userReportRecyclerView.adapter = adapter
+    }
+
+
+
+    private fun showDatePicker(onDateSelected: (Pair<Date, Date>) -> Unit) {
+        val dateRangePicker = MaterialDatePicker.Builder.dateRangePicker()
+            .setTitleText("Select Date Range")
+            .setSelection(Pair(MaterialDatePicker.thisMonthInUtcMilliseconds(), MaterialDatePicker.todayInUtcMilliseconds()))
+            .build()
+
+        dateRangePicker.addOnPositiveButtonClickListener { selection ->
+            val startDate = Date(selection.first)
+            val endDate = Date(selection.second)
+            onDateSelected(Pair(getStartOfDay(startDate), getEndOfDay(endDate)))
+        }
+
+        dateRangePicker.show(childFragmentManager, "DATE_PICKER")
+    }
+
+    private fun showAddReviewDialog(userEmail: String) {
+        val dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_add_review, null)
+        val radioGroup = dialogView.findViewById<RadioGroup>(R.id.reviewStatusRadioGroup)
+        val commentEditText = dialogView.findViewById<TextInputEditText>(R.id.commentEditText)
+        val timeInEditText = dialogView.findViewById<TextInputEditText>(R.id.supposedTimeInEditText)
+        val timeOutEditText = dialogView.findViewById<TextInputEditText>(R.id.supposedTimeOutEditText)
+
+        val timeSetListener = { editText: TextInputEditText ->
+            TimePickerDialog.OnTimeSetListener { _, hourOfDay, minute ->
+                editText.setText(String.format(Locale.getDefault(), "%02d:%02d", hourOfDay, minute))
+            }
+        }
+
+        timeInEditText.setOnClickListener {
+            TimePickerDialog(requireContext(), timeSetListener(timeInEditText), 7, 30, true).show()
+        }
+        timeOutEditText.setOnClickListener {
+            TimePickerDialog(requireContext(), timeSetListener(timeOutEditText), 20, 30, true).show()
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setView(dialogView)
+            .setPositiveButton("Submit") { dialog, _ ->
+                val selectedId = radioGroup.checkedRadioButtonId
+                if (selectedId == -1) {
+                    Toast.makeText(context, "Please select a status", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+
+                val status = when (selectedId) {
+                    R.id.radioVeryGood -> "Very Good"
+                    R.id.radioGood -> "Good"
+                    R.id.radioBad -> "Bad"
+                    else -> "Unknown"
+                }
+
+                val supposedTimeIn = timeInEditText.text.toString()
+                val supposedTimeOut = timeOutEditText.text.toString()
+                val originalComment = commentEditText.text.toString()
+                val fullComment = if (originalComment.isNotBlank()) {
+                    "$originalComment\nExpected: $supposedTimeIn - $supposedTimeOut"
+                } else {
+                    "Expected: $supposedTimeIn - $supposedTimeOut"
+                }
+
+                submitReviewToSheet(userEmail, fullComment, status)
+                dialog.dismiss()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun fetchTransactionsForUser(userEmail: String, page: Int, holder: UserReportAdapter.UserReportViewHolder) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val reviewsByDate = allReviewData.mapNotNull { row ->
+                    val reviewedUser = row.getOrNull(0)?.toString()
+                    if (userEmail.equals(reviewedUser, ignoreCase = true)) {
+                        val comment = row.getOrNull(1)?.toString() ?: ""
+                        val status = row.getOrNull(2)?.toString() ?: "Unknown"
+                        val timestampStr = row.getOrNull(3)?.toString()
+                        val commenter = row.getOrNull(4)?.toString() ?: "Unknown"
+                        val date = parseDateString(timestampStr)
+                        if (date != null) {
+                            Pair(getStartOfDay(date), ManagerReview(UUID.randomUUID().toString(), commenter, comment, status))
+                        } else {
+                            null
+                        }
+                    } else {
+                        null
+                    }
+                }.groupBy({ it.first }, { it.second })
+
+                val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
+                val dateFormat = SimpleDateFormat("EEE, dd MMM yyyy", Locale.getDefault())
+
+                val userTransactions = allClosingBalanceData
+                    .mapNotNull { row ->
+                        val closingTimestampStr = row.getOrNull(5)?.toString()
+                        val closingDate = parseDateString(closingTimestampStr)
+                        if (userEmail.equals(row.getOrNull(7)?.toString(), ignoreCase = true) && closingDate != null) {
+                            Pair(row, closingDate)
+                        } else {
+                            null
+                        }
+                    }
+                    .sortedByDescending { it.second }
+                    .map { pair ->
+                        val row = pair.first
+                        val closingDate = pair.second
+                        val clockInTimestampStr = row.getOrNull(8)?.toString()
+                        val clockInDate = parseDateString(clockInTimestampStr)
+                        val reviewsForThisDay = reviewsByDate[getStartOfDay(closingDate)] ?: emptyList()
+                        UserTransaction(
+                            id = row.getOrNull(0)?.toString() ?: UUID.randomUUID().toString(),
+                            date = dateFormat.format(closingDate),
+                            actualTimeIn = clockInDate?.let { timeFormat.format(it) } ?: "N/A",
+                            supposedTimeIn = "",
+                            actualTimeOut = timeFormat.format(closingDate),
+                            supposedTimeOut = "",
+                            managerReviews = reviewsForThisDay
+                        )
+                    }
+
+                withContext(Dispatchers.Main) {
+                    holder.updateTransactions(userTransactions, 1, 1)
+                }
+
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Log.e(TAG, "Failed to fetch transactions for user", e)
+                    Toast.makeText(context, "Could not load transaction details.", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+
+    private fun submitReviewToSheet(userEmail: String, comment: String, status: String) {
+        val progress = android.app.ProgressDialog(requireContext()).apply {
+            setMessage("Submitting review...")
+            setCancelable(false)
+            show()
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val sheetsService = getSheetsService(googleAccount, readOnly = false)
+                val spreadsheetId = findSheetIdByName(getDriveService(googleAccount), "nia-bridge data")
+                    ?: throw IOException("Spreadsheet 'nia-bridge data' not found.")
+
+                checkAndCreateSheet(sheetsService, spreadsheetId, "review_sheet")
+
+                val timestamp = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
+                val loggedInUser = googleAccount.email ?: "Unknown"
+
+                val reviewRow = listOf(userEmail, comment, status, timestamp, loggedInUser)
+                val valueRange = ValueRange().setValues(listOf(reviewRow))
+
+                sheetsService.spreadsheets().values()
+                    .append(spreadsheetId, "review_sheet!A:E", valueRange)
+                    .setValueInputOption("USER_ENTERED")
+                    .execute()
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Review submitted successfully!", Toast.LENGTH_LONG).show()
+                    fetchInitialData()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Log.e(TAG, "Failed to submit review", e)
+                    Toast.makeText(context, "Error submitting review: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            } finally {
+                withContext(Dispatchers.Main) {
+                    if (progress.isShowing) progress.dismiss()
+                }
+            }
+        }
+    }
+
+    private suspend fun checkAndCreateSheet(sheetsService: Sheets, spreadsheetId: String, sheetName: String) {
+        val spreadsheet = sheetsService.spreadsheets().get(spreadsheetId).execute()
+        val sheetExists = spreadsheet.sheets.any { it.properties.title == sheetName }
+
+        if (!sheetExists) {
+            val requests = mutableListOf<Request>()
+            requests.add(Request().setAddSheet(AddSheetRequest().setProperties(SheetProperties().setTitle(sheetName))))
+
+            val batchUpdateRequest = BatchUpdateSpreadsheetRequest().setRequests(requests)
+            sheetsService.spreadsheets().batchUpdate(spreadsheetId, batchUpdateRequest).execute()
+
+            val headers = listOf("unit_id", "comment", "comment_status", "createTimeStamp", "CommentedBy")
+            val valueRange = ValueRange().setValues(listOf(headers))
+            sheetsService.spreadsheets().values()
+                .update(spreadsheetId, "$sheetName!A1", valueRange)
+                .setValueInputOption("USER_ENTERED")
+                .execute()
+        }
     }
 
     private fun recordPayment(userEmail: String, amount: Double) {
@@ -112,7 +482,7 @@ class user_report : Fragment() {
 
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "Payment recorded successfully.", Toast.LENGTH_SHORT).show()
-                    fetchUserReports()
+                    fetchInitialData()
                 }
 
             } catch (e: Exception) {
@@ -123,54 +493,6 @@ class user_report : Fragment() {
             } finally {
                 withContext(Dispatchers.Main) {
                     if (progress.isShowing) progress.dismiss()
-                }
-            }
-        }
-    }
-
-    private fun fetchUserReports() {
-        binding.swipeRefreshLayout.isRefreshing = true
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val allUsers = fetchUsersAndRolesFromScript()
-                val currentUserEmail = googleAccount.email
-                val currentUser = allUsers.firstOrNull { it.email.equals(currentUserEmail, ignoreCase = true) }
-                isAdmin = currentUser?.isSubUser == false
-
-                val sheetsService = getSheetsService(googleAccount)
-                val spreadsheetId = findSheetIdByName(getDriveService(googleAccount), "nia-bridge data")
-                    ?: throw IOException("Spreadsheet 'nia-bridge data' not found.")
-
-                val rangesToFetch = listOf("Closing Balance!A:H", "Expenses!A:I", "stock_taking!A:H")
-                val batchData = sheetsService.spreadsheets().values().batchGet(spreadsheetId).setRanges(rangesToFetch).execute()
-
-                val closingBalanceValues = batchData.valueRanges.getOrNull(0)?.getValues()?.drop(1) ?: emptyList()
-                val expenseValues = batchData.valueRanges.getOrNull(1)?.getValues()?.drop(1) ?: emptyList()
-                val stockTakingValues = batchData.valueRanges.getOrNull(2)?.getValues()?.drop(1) ?: emptyList()
-
-                val reports = mutableListOf<UserReportData>()
-                val userList = if (isAdmin) allUsers else (currentUser?.let { listOf(it) } ?: emptyList())
-
-                for (user in userList) {
-                    reports.add(processUserData(user.email, closingBalanceValues, expenseValues, stockTakingValues))
-                }
-
-                withContext(Dispatchers.Main) {
-                    adapter = UserReportAdapter(reports, isAdmin) { userEmail, amount ->
-                        recordPayment(userEmail, amount)
-                    }
-                    binding.userReportRecyclerView.adapter = adapter
-                }
-
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Log.e(TAG, "Error fetching user reports", e)
-                    Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show()
-                }
-            } finally {
-                withContext(Dispatchers.Main) {
-                    binding.swipeRefreshLayout.isRefreshing = false
                 }
             }
         }
@@ -235,19 +557,17 @@ class user_report : Fragment() {
         }
     }
 
-    // ✅✅✅ --- FINAL, CORRECTED LOGIC --- ✅✅✅
     private fun processUserData(
         userEmail: String,
         closingBalanceData: List<List<Any>>,
         expensesData: List<List<Any>>,
         stockTakingData: List<List<Any>>
-    ): UserReportData {
+    ): UserFinancials { // Changed return type
 
         val calendar = Calendar.getInstance()
         val todayStart = getStartOfDay(calendar.time)
         val monthStart = getStartOfDay(calendar.apply { set(Calendar.DAY_OF_MONTH, 1) }.time)
 
-        // --- 1. NET Cash Liability (All-Time and This Month) ---
         var netTodayCashLiability = 0.0
         var netMonthCashLiability = 0.0
         var netTotalCashLiability = 0.0
@@ -263,13 +583,12 @@ class user_report : Fragment() {
             }
         }
 
-        // --- 2. Payments (All-Time and This Month) ---
         var monthPaid = 0.0
         var totalPaid = 0.0
 
         for (row in expensesData) {
             val description = row.getOrNull(2)?.toString() ?: ""
-            if (description.equals("Payment to $userEmail", ignoreCase = true)) {
+            if (description.contains("Payment to $userEmail", ignoreCase = true)) {
                 val timestamp = parseDateString(row.getOrNull(7)?.toString()) ?: continue
                 val amount = row.getOrNull(4)?.toString()?.toDoubleOrNull() ?: 0.0
                 totalPaid += amount
@@ -277,10 +596,9 @@ class user_report : Fragment() {
             }
         }
 
-        // --- 3. NET Stock Variance Liability (All-Time and This Month) ---
         var netTotalStockVarianceLiability = 0.0
         var netMonthStockVarianceLiability = 0.0
-        var monthPositiveVariances = 0.0 // For display purposes
+        var monthPositiveVariances = 0.0
 
         val groupedStockTakes = stockTakingData.groupBy { parseDateString(it.getOrNull(0)?.toString()) }
 
@@ -304,34 +622,28 @@ class user_report : Fragment() {
                 .maxByOrNull { it.value }?.key
 
             if (userEmail.equals(liableUserForPeriod, ignoreCase = true)) {
-
                 val netVarianceForTimestamp = rows.sumOf {
                     val cost = it.getOrNull(6)?.toString()?.toDoubleOrNull() ?: 0.0
-                    -cost // A deficit (-ve in sheet) becomes a debt (+ve), a surplus (+ve in sheet) becomes a credit (-ve).
+                    -cost
                 }
 
                 netTotalStockVarianceLiability += netVarianceForTimestamp
 
                 if (timestamp.after(monthStart)) {
                     netMonthStockVarianceLiability += netVarianceForTimestamp
-
-                    // Separately, calculate the sum of only positive variances (surpluses) for display
                     val positiveSurplusThisMonth = rows.sumOf {
                         val cost = it.getOrNull(6)?.toString()?.toDoubleOrNull() ?: 0.0
-                        if (cost > 0) cost else 0.0
+                        if (cost < 0) -cost else 0.0
                     }
                     monthPositiveVariances += positiveSurplusThisMonth
                 }
             }
         }
 
-        // --- 4. Final Calculation ---
         val outstandingLiability = (netTotalCashLiability + netTotalStockVarianceLiability) - totalPaid
-        val netMonthLiability = (netMonthCashLiability + netMonthStockVarianceLiability) - monthPaid
+        val netMonthLiability = (netMonthCashLiability + netMonthStockVarianceLiability)
 
-        return UserReportData(
-            userName = userEmail.split("@").firstOrNull()?.replaceFirstChar { it.titlecase() } ?: "Unknown User",
-            userEmail = userEmail,
+        return UserFinancials(
             outstandingLiability = outstandingLiability,
             variances = netTotalStockVarianceLiability,
             todayShortage = netTodayCashLiability,
@@ -341,7 +653,13 @@ class user_report : Fragment() {
         )
     }
 
-    private fun getStartOfDay(date: Date): Date = Calendar.getInstance().apply { time = date; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }.time
+    private fun getStartOfDay(date: Date): Date = Calendar.getInstance().apply {
+        time = date
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.time
 
     private fun getEndOfDay(date: Date): Date = Calendar.getInstance().apply {
         time = date
@@ -365,3 +683,13 @@ class user_report : Fragment() {
         _binding = null
     }
 }
+
+
+data class UserFinancials(
+    val outstandingLiability: Double,
+    val variances: Double,
+    val todayShortage: Double,
+    val monthShortages: Double,
+    val monthPaid: Double,
+    val monthPositiveVariances: Double
+)

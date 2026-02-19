@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="16dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="8dp"
+    android:paddingBottom="8dp">
+
+    <!-- Reviewer's Email -->
+    <TextView
+        android:id="@+id/reviewerEmailTextView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="10sp"
+        android:textStyle="italic"
+        tools:text="manager@example.com" />
+
+    <!-- Review Description and Status -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/reviewDescriptionTextView"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textSize="12sp"
+            tools:text="User was late due to unexpected traffic." />
+
+        <androidx.cardview.widget.CardView
+            android:id="@+id/reviewStatusIndicator"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:layout_marginStart="16dp"
+            app:cardCornerRadius="5dp"
+            app:cardElevation="0dp"
+            tools:cardBackgroundColor="@color/variance_positive" />
+
+    </LinearLayout>
+</LinearLayout>

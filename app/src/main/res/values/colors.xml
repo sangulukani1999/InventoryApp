@@ -13,6 +13,7 @@
     <color name="item_selected_background">#E0E0E0</color> <!-- A light grey color -->
     <color name="active_filter_color">#FFC107</color> <!-- Amber/Yellow for active -->
     <color name="inactive_filter_color">#005596</color> <!-- Your original blue for inactive -->
-
-
+    <color name="status_green">#4CAF50</color>
+    <color name="status_yellow">#FFEB3B</color>
+    <color name="status_red">#F44336</color>
 </resources>
