@@ -9,13 +9,11 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
-import android.widget.Toast.makeText
 import androidx.core.view.WindowCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.viewpager2.widget.ViewPager2
-import com.example.zed.databinding.ActivityStockFragmentBinding
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
@@ -36,11 +34,7 @@ import org.json.JSONException
 import java.io.IOException
 
 // Import the shared data classes from Models.kt
-import com.example.zed.Product
-import com.example.zed.Location
-import com.example.zed.UnitOfMeasure
 import com.example.zed.databinding.FragmentInventoryFragmentBinding
-import com.example.zed.stockTaking
 import kotlin.collections.component1
 import kotlin.collections.component2
 import kotlin.collections.iterator

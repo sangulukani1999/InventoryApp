@@ -81,6 +81,23 @@
             android:name=".InventoryItemDetails"
             android:exported="false" />
         <activity
+            android:name=".ChooseLocationActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <activity
+            android:name=".ToCountActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".StockProductListActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".CashReconciliationActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+        <activity
             android:name=".stockTaking"
             android:exported="false" />
         <activity

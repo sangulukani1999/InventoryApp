@@ -8,7 +8,7 @@
     android:background="#f4f6ff"
     android:clipChildren="false"
     android:clipToPadding="false"
-    tools:context=".stockTaking">
+    tools:context=".stockTaking1">
 
     <androidx.cardview.widget.CardView
         android:id="@+id/cardView"

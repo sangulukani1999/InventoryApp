@@ -102,6 +102,7 @@ dependencies {
     implementation(libs.androidx.core.animation)
     implementation(libs.play.services.mlkit.barcode.scanning)
     implementation(libs.object1.detection)
+    implementation("com.github.bumptech.glide:glide:4.16.0")
     // ✅ ADD THIS LINE - THIS IS THE FIX FOR THE 'extensions' ERROR
     //implementation(libs.google.api.client.googleapis.extensions)
 

@@ -15,4 +15,46 @@
 
     <!-- Add this line for Google Sign-In -->
     <string name="default_web_client_id">126497055268-44ja31uv9nd7d1k99jlelkscj3n783oo.apps.googleusercontent.com</string>
+
+
+
+        <string name="percentage_format">%1$d%%</string>
+
+        <string name="products_counted_format">
+        %1$d of %2$d products counted
+    </string>
+
+        <string name="products_remaining_format">
+        %1$d remaining
+    </string>
+
+        <plurals name="products_remaining_plural">
+            <item quantity="one">%d product remaining</item>
+            <item quantity="other">%d products remaining</item>
+        </plurals>
+
+        <string name="location_progress_format">
+        %1$d of %2$d products counted on this shelf
+    </string>
+
+        <string name="stock_take_complete">
+        Stock take is complete
+    </string>
+
+        <string name="stock_take_in_progress">
+        Stock take is in progress
+    </string>
+
+        <string name="continue_text">Continue</string>
+
+        <string name="continue_counting">
+        Continue counting
+    </string>
+
+        <string name="review">Review</string>
+
+        <string name="review_stock_take">
+        Review stock take
+    </string>
+
 </resources>
